@@ -29,7 +29,8 @@ function register(app, { db, requireAuth, requireWorkspace, requirePermission, l
   function perms(res) {
     const p = res.locals.userPerms;
     const has = (perm) => (p instanceof Set ? p.has(perm) : Array.isArray(p) ? p.includes(perm) : !!(p && p[perm]));
-    return { create: has('risk.create'), update: has('risk.update'), remove: has('risk.delete'), criteria: has('risk.methodology') };
+    return { create: has('risk.create'), update: has('risk.update'), remove: has('risk.delete'), criteria: has('risk.methodology'),
+      export: has('workspace.export') && has('control.view') };
   }
 
   function render(res, req, viewName, locals) {
@@ -79,7 +80,7 @@ function register(app, { db, requireAuth, requireWorkspace, requirePermission, l
   });
 
   app.get('/workspaces/:wsId/iso42001/risks/assessments/:recordId(\\d+)', requireAuth, requireWorkspace, requirePermission('risk.view'), (req, res) => {
-    const record = aiRisk.loadRecord(db, req.workspace, Number(req.params.recordId));
+    const record = aiRisk.loadRecord(db, req.workspace, Number(req.params.recordId), 'iso42001');
     if (!record) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'That risk assessment record was not found.' });
     render(res, req, 'risk_assessment_record', { title: record.label, record, inModule: true });
   });

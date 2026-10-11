@@ -214,15 +214,21 @@ function register(app, deps) {
   });
 
   // ---- RISKS ----
+  // One management system's register at a time: on a client with both, the
+  // ISMS's and the AIMS's risks are separate registers on separate criteria.
   app.get('/auditor/:token/risks', requireAuditorToken, requireAuditorService, (req, res) => {
-    const methodology = getActiveMethodology(req.workspace.id);
+    const riskOwner = require('../lib/risk-owner');
+    const system = riskOwner.requested(req.workspace, req.query.system);
+    const methodology = getActiveMethodology(req.workspace.id, system);
     const risks = db.prepare(`SELECT r.*, a.name AS asset_name, s.name AS ai_system_name FROM risks r
       LEFT JOIN assets a ON a.id = r.asset_id
       LEFT JOIN ai_systems s ON s.id = r.ai_system_id AND s.workspace_id = r.workspace_id
-      WHERE r.workspace_id = ?
+      WHERE r.workspace_id = ? AND ${riskOwner.ownedSql('r', system)}
       ORDER BY (COALESCE(r.likelihood,0) * COALESCE(r.impact,0)) DESC, r.id`).all(req.workspace.id);
     const enriched = risks.map(r => ({ ...r, band: methodologyBand(methodology, r.likelihood, r.impact) }));
-    renderAuditorView(res, 'auditor_risks', { share: req.share, workspace: req.workspace, risks: enriched, methodology });
+    const lastAssessment = system === 'iso42001' ? require('../lib/ai-risk').records(db, req.workspace, 'iso42001')[0] || null : null;
+    renderAuditorView(res, 'auditor_risks', { share: req.share, workspace: req.workspace, risks: enriched, methodology,
+      system, both: riskOwner.hasBoth(req.workspace), lastAssessment });
   });
 
   // ---- EVIDENCE ----

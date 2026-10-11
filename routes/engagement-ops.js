@@ -689,6 +689,38 @@ function register(app, deps) {
     res.send('﻿' + csv);
   });
 
+  // The AI risk register, from a sealed risk assessment record or, without
+  // one, the live register (lib/aims-reports.js): Word to hand over, CSV for
+  // an auditor who samples from it.
+  const riskRegisterPermissions = [requireIso42001Programme, requirePermission('workspace.export'), requirePermission('risk.view'), requirePermission('control.view')];
+  const riskRecord = (req) => (req.params.recordId ? require('../lib/ai-risk').loadRecord(db, req.workspace, Number(req.params.recordId), 'iso42001') : null);
+  const sendRiskRegisterCsv = (req, res, record) => {
+    const csv = aimsReports.aiRiskRegisterCsv(db, req.workspace, record);
+    logAction(req.user.id, req.workspace.id, 'export_ai_risk_register_csv', record ? 'risk_assessment_record' : 'workspace', record ? record.id : req.workspace.id, { bytes: csv.length }, auditCtx(req));
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${record ? `ai-risk-register-${record.performed_on}-record-${record.id}` : 'ai-risk-register-live'}-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send('﻿' + csv);
+  };
+
+  app.get('/workspaces/:wsId/iso42001/risks/assessments/:recordId(\\d+)/register.docx', requireAuth, requireWorkspace, ...riskRegisterPermissions, async (req, res) => {
+    const record = riskRecord(req);
+    await sendReport(req, res, record && aimsReports.aiRiskRegister(db, req.workspace, record), 'export_ai_risk_register', 'risk_assessment_record', Number(req.params.recordId));
+  });
+
+  app.get('/workspaces/:wsId/iso42001/risks/assessments/:recordId(\\d+)/register.csv', requireAuth, requireWorkspace, ...riskRegisterPermissions, (req, res) => {
+    const record = riskRecord(req);
+    if (!record) return res.status(404).render('error', { user: req.user, ws: req.workspace, message: 'That record was not found.' });
+    sendRiskRegisterCsv(req, res, record);
+  });
+
+  app.get('/workspaces/:wsId/iso42001/risks/register.docx', requireAuth, requireWorkspace, ...riskRegisterPermissions, async (req, res) => {
+    await sendReport(req, res, aimsReports.aiRiskRegister(db, req.workspace, null), 'export_ai_risk_register', 'workspace', req.workspace.id);
+  });
+
+  app.get('/workspaces/:wsId/iso42001/risks/register.csv', requireAuth, requireWorkspace, ...riskRegisterPermissions, (req, res) => {
+    sendRiskRegisterCsv(req, res, null);
+  });
+
   app.get('/workspaces/:wsId/mrms/:id(\\d+)/minutes.docx', requireAuth, requireWorkspace, requireReviewService,
     requirePermission('workspace.export'), async (req, res) => {
     await sendReport(req, res, aimsReports.managementReview(db, req.workspace, Number(req.params.id)), 'export_mrm_minutes', 'mrm', Number(req.params.id));

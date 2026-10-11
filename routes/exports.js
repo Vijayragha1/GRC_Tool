@@ -226,12 +226,23 @@ function register(app, deps) {
       manifest.push('  01_AI_System_Register.csv');
     }
 
-    // Risk register CSV
-    const riskRows = db.prepare(`SELECT r.*, a.name AS asset_name FROM risks r LEFT JOIN assets a ON a.id=r.asset_id WHERE r.workspace_id=? ORDER BY (r.likelihood*r.impact) DESC`).all(ws.id);
-    let riskCsv = 'ID,Title,Asset,Threat,Vulnerability,L,I,Score,Treatment,Owner,Status,Residual L,Residual I\n';
-    riskRows.forEach(r => { riskCsv += ['R-' + String(r.id).padStart(3,'0'), r.title, r.asset_name, r.threat, r.vulnerability, r.likelihood, r.impact, r.likelihood*r.impact, r.treatment, r.owner_name, r.status, r.residual_likelihood, r.residual_impact].map(esc).join(',') + '\n'; });
-    zip.append(riskCsv, { name: '02_Risk_Register.csv' });
-    manifest.push(`  02_Risk_Register.csv (${riskRows.length} risks)`);
+    // Risk register CSV: the ISMS's risks only. The AIMS's risks are its own
+    // register, from its latest recorded risk assessment.
+    if (std.isms) {
+      const riskRows = db.prepare(`SELECT r.*, a.name AS asset_name FROM risks r LEFT JOIN assets a ON a.id=r.asset_id
+        WHERE r.workspace_id=? AND ${require('../lib/risk-owner').ownedSql('r', 'iso27001')} ORDER BY (r.likelihood*r.impact) DESC`).all(ws.id);
+      let riskCsv = 'ID,Title,Asset,Threat,Vulnerability,L,I,Score,Treatment,Owner,Status,Residual L,Residual I\n';
+      riskRows.forEach(r => { riskCsv += ['R-' + String(r.id).padStart(3,'0'), r.title, r.asset_name, r.threat, r.vulnerability, r.likelihood, r.impact, r.likelihood*r.impact, r.treatment, r.owner_name, r.status, r.residual_likelihood, r.residual_impact].map(esc).join(',') + '\n'; });
+      zip.append(riskCsv, { name: '02_Risk_Register.csv' });
+      manifest.push(`  02_Risk_Register.csv (${riskRows.length} risks)`);
+    }
+    if (std.aims) {
+      const aiRisks = require('../lib/aims-audit-view').risks(db, ws);
+      zip.append(require('../lib/aims-reports').aiRiskRegisterCsv(db, ws, aiRisks.record), { name: '02_AI_Risk_Register.csv' });
+      manifest.push(`  02_AI_Risk_Register.csv (${aiRisks.rows.length} AI risks, ${aiRisks.record
+        ? `from the risk assessment performed ${aiRisks.record.performed_on}, ${aiRisks.record.intact ? 'sealed' : 'seal broken'}`
+        : 'live register; no AI risk assessment has been recorded'})`);
+    }
 
     // Asset inventory CSV
     const assetRows = db.prepare(`SELECT * FROM assets WHERE workspace_id=? ORDER BY name`).all(ws.id);

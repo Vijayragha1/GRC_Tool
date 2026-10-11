@@ -84,6 +84,7 @@
 .a42-files li + li { border-top: 1px solid var(--border); }
 .a42-files .meta { display: block; margin-top: 2px; }
 .a42-files a { color: var(--ink); }
+.a42-file-links { white-space: nowrap; font-size: 12.5px; }
 .a42-attach { display: grid; gap: 12px; padding: 14px 16px; border-top: 1px solid var(--border); background: var(--bg-subtle); }
 .a42-attach form:not(.stack-grid) { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
 .a42-rail .panel-pad { display: grid; gap: 12px; }

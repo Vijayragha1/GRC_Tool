@@ -290,6 +290,13 @@
         <div class="kpi-meta"><%= risks.treated %> treated or closed</div>
       </div>
     <% } %>
+    <% if (typeof aiRisks !== 'undefined') { %>
+      <div class="kpi <%= aiRisks.from === 'live' ? 'bad' : (aiRisks.above > 0 ? 'warn' : 'good') %>">
+        <div class="kpi-label">AI risks · Above the criteria</div>
+        <div class="kpi-num"><%= aiRisks.above %> <span class="mini">/ <%= aiRisks.rows.length %></span></div>
+        <div class="kpi-meta"><%= aiRisks.record ? 'Assessed ' + fmt(aiRisks.record.performed_on) : 'No assessment recorded' %></div>
+      </div>
+    <% } %>
     <% if (typeof ncs !== 'undefined') { %>
       <div class="kpi <%= ncs.majorOpen > 0 ? 'bad' : (ncs.open > 0 ? 'warn' : 'good') %>">
         <div class="kpi-label">Nonconformities · Open</div>
@@ -461,7 +468,7 @@
 <% if (sections.risks && typeof risks !== 'undefined') { %>
 <div class="section">
   <div class="section-eyebrow">Section <%= nextSection() %></div>
-  <h2 class="section-title">Risk register</h2>
+  <h2 class="section-title">Risk register<%= standards.aims ? ' · ISO/IEC 27001' : '' %></h2>
   <div class="section-rule"></div>
   <% if (risks.methodology) { %>
     <p class="mini">Methodology: <strong><%= risks.methodology.name %></strong> · <%= risks.methodology.likelihood_scale.length %>×<%= risks.methodology.impact_scale.length %> matrix</p>
@@ -535,6 +542,57 @@
             <td style="text-transform:capitalize;"><%= r.treatment || '-' %></td>
             <td><%- chip(r.status, statusChipKind(r.status)) %></td>
             <td><%= r.owner_name || '-' %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+<% } %>
+
+<%# ============= AI RISK REGISTER (ISO 42001) ============= %>
+<% if (sections.risks && typeof aiRisks !== 'undefined') {
+     const ar = aiRisks;
+     const levelColor = (band) => (ar.method.thresholds && ar.method.thresholds[band] ? ar.method.thresholds[band].color : '#52525b');
+%>
+<div class="section">
+  <div class="section-eyebrow">Section <%= nextSection() %></div>
+  <h2 class="section-title">AI risk register<%= standards.isms ? ' · ISO/IEC 42001' : '' %></h2>
+  <div class="section-rule"></div>
+  <% if (ar.record) { %>
+    <p class="mini">From the AI risk assessment performed <strong><%= fmt(ar.record.performed_on) %></strong><%= ar.record.recorded_by_name ? ', recorded by ' + ar.record.recorded_by_name : '' %> · <%= ar.rows.length %> AI risk<%= ar.rows.length === 1 ? '' : 's' %>, <%= ar.above %> above the criteria · <%= ar.record.intact ? 'sealed' : 'does not match its seal' %> · <span class="mono">SHA-256 <%= ar.record.payload_hash.slice(0, 16) %>…</span></p>
+  <% } else { %>
+    <div class="callout warn">No AI risk assessment has been recorded. This is the live register on <%= fmt(ar.asOf) %>, not a sealed record.</div>
+  <% } %>
+  <p class="mini">Criteria: <strong><%= ar.record ? ar.record.methodology_name : ar.method.name %></strong> · <%= ar.method.likelihood_scale.length %>×<%= ar.method.impact_scale.length %> matrix. Each AI risk is rated for its impact on the organisation, on individuals or groups and on society, and scored on the highest.</p>
+  <% if (ar.criteriaNote) { %><div class="callout warn"><%= ar.criteriaNote %></div><% } %>
+  <% if (ar.addedSince.length) { %><div class="callout warn"><%= ar.addedSince.length %> AI risk<%= ar.addedSince.length === 1 ? ' was' : 's were' %> added to the register after this assessment and <%= ar.addedSince.length === 1 ? 'is' : 'are' %> not in it.</div><% } %>
+
+  <% if (!ar.rows.length) { %>
+    <div class="empty"><%= ar.record ? 'The register was empty when this assessment was recorded.' : 'No AI risks recorded.' %></div>
+  <% } else { %>
+    <table class="t">
+      <thead><tr>
+        <th style="width:14mm;">ID</th>
+        <th>Title</th>
+        <th class="num" style="width:12mm;">L·I</th>
+        <th style="width:22mm;">Impact: org · people · society</th>
+        <th style="width:18mm;">Level</th>
+        <th style="width:22mm;">Treatment</th>
+        <th style="width:14mm;">Residual</th>
+        <th style="width:28mm;">Accepted by</th>
+      </tr></thead>
+      <tbody>
+        <% ar.rows.forEach(r => { const c = levelColor(r.band); %>
+          <tr>
+            <td class="mono">R-<%= r.id %></td>
+            <td><%= r.title %><% if (r.ai_system || r.sourceText) { %><div class="mini" style="margin-top:1mm;"><%= [r.ai_system, r.sourceText].filter(Boolean).join(' · ') %></div><% } %><% if (r.description) { %><div class="mini" style="margin-top:1mm;"><%= r.description.slice(0,140) %><%= r.description.length > 140 ? '…' : '' %></div><% } %></td>
+            <td class="num"><%= r.likelihood %>·<%= r.impact %></td>
+            <td><%= r.impact_organisation ?? r.impact ?? '-' %> · <%= r.impact_individuals ?? '-' %> · <%= r.impact_society ?? '-' %></td>
+            <td><% if (r.band) { %><span class="chip" style="background:<%= c %>1a;color:<%= c %>;border-color:<%= c %>;"><%= r.band %></span><% } else { %>-<% } %></td>
+            <td><%= r.treatmentText || '-' %></td>
+            <td><%= r.residual_likelihood && r.residual_impact ? r.residual_likelihood + '·' + r.residual_impact : '-' %></td>
+            <td><%= r.acceptance ? r.acceptance.accepter_name + ' · ' + fmt(r.acceptance.signed_at) : '-' %></td>
           </tr>
         <% }) %>
       </tbody>

@@ -7,7 +7,13 @@
     <h1 class="page-title"><%= record.label %></h1>
     <div class="page-subtitle">Performed <%= record.performed_on %> · recorded by <%= record.recorded_by_name || 'unknown' %> on <%= String(record.created_at).slice(0, 10) %><% if (record.methodology_name) { %> · method: <%= record.methodology_name %><% } %></div>
   </div>
-  <span class="tag <%= record.intact ? 'tag-neutral' : 'tag-danger' %>" title="SHA-256 <%= record.payload_hash %>"><%= record.intact ? 'Sealed record' : 'Record does not match its seal' %></span>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+    <span class="tag <%= record.intact ? 'tag-neutral' : 'tag-danger' %>" title="SHA-256 <%= record.payload_hash %>"><%= record.intact ? 'Sealed record' : 'Record does not match its seal' %></span>
+    <% if (inAims && typeof riskPerms !== 'undefined' && riskPerms.export) { %>
+      <a class="btn btn-secondary" href="/workspaces/<%= ws.id %>/iso42001/risks/assessments/<%= record.id %>/register.docx">Word</a>
+      <a class="btn btn-secondary" href="/workspaces/<%= ws.id %>/iso42001/risks/assessments/<%= record.id %>/register.csv">CSV</a>
+    <% } %>
+  </div>
 </div>
 
 <% if (record.notes) { %><div class="panel" style="margin-bottom:14px;"><div class="panel-pad text-lg" style="line-height:1.55;"><%= record.notes %></div></div><% } %>
