@@ -11,6 +11,9 @@ const { bootClient } = require('./helpers');
 
 let env, client, db, actor, wsId, gapOnlyId, clientUser, requestId;
 const TODAY = '2026-09-27';
+// The date asked of the client must be in the future on whatever day the suite
+// runs, or the send is refused; a fixed date here eventually passes.
+const DUE = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
 
 function addRequest(workspaceId, ref) {
   return Number(db.prepare(`INSERT INTO aims_audit_requests (workspace_id, ref, source, kind, stage, description, status, sort_order)
@@ -31,7 +34,7 @@ test.before(async () => {
 test.after(async () => { db?.close(); await client?.close(); });
 
 test('sending a request to the client queues an email as well as the in-app notice', async () => {
-  const res = await client.post(`/workspaces/${wsId}/iso42001/requests/${requestId}/send`, { assignee_id: String(clientUser), due_date: '2026-10-10', note: 'The signed copy, please' });
+  const res = await client.post(`/workspaces/${wsId}/iso42001/requests/${requestId}/send`, { assignee_id: String(clientUser), due_date: DUE, note: 'The signed copy, please' });
   assert.equal(res.status, 302, res.text.slice(0, 200));
   const outbox = db.prepare(`SELECT o.*, n.title, n.link FROM notification_outbox o JOIN notifications n ON n.id = o.notification_id WHERE o.recipient_id=?`).all(clientUser);
   assert.equal(outbox.length, 1);
@@ -44,7 +47,7 @@ test('sending a request to the client queues an email as well as the in-app noti
   assert.equal(result.sent, 1);
   assert.equal(delivered[0].toEmail, 'owner@aurora.example');
   assert.match(delivered[0].body, /The signed copy, please/);
-  assert.match(delivered[0].body, /Please respond by 2026-10-10/);
+  assert.match(delivered[0].body, new RegExp(`Please respond by ${DUE}`));
 });
 
 test('an unanswered request is chased once for each due date, and the consultant is told', () => {
