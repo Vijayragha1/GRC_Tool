@@ -161,7 +161,7 @@
           <div class="empty-state">
             <div class="empty-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></div>
             <div class="empty-title">No change requests</div>
-            <div class="empty-sub">A.8.32 requires a structured approach to managing changes. Log change requests to build the audit trail and ensure proper approval workflows.</div>
+            <div class="empty-sub"><%= aims.aimsOnly ? 'ISO 42001 asks for changes to be planned and controlled (clauses 6.3, 8.1). Log each change to an AI system, and mark whether it is significant: a significant change means its impact and AI risks are assessed again.' : 'A.8.32 requires a structured approach to managing changes. Log change requests to build the audit trail and ensure proper approval workflows.' %></div>
             <button onclick="document.getElementById('newChange').classList.toggle('hidden')" class="btn btn-primary">New change request</button>
           </div>
         </td></tr>

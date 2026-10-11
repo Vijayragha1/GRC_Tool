@@ -51,10 +51,14 @@ test('the registers speak the standards the client runs', async () => {
   assert.match(both.text, /ISO 27001 A\.5\.24–A\.5\.28\) and incidents with AI systems \(ISO 42001 A\.8\.4/);
   const isms = await client.get(`/workspaces/${ismsId}/incidents`);
   assert.match(isms.text, /<h1 class="page-title">Information security incidents<\/h1>/, 'an ISO 27001 client sees no change');
+  assert.match((await client.get(`/workspaces/${ismsId}/changes`)).text, /A\.8\.32 requires a structured approach/);
   assert.doesNotMatch(isms.text, /optgroup|ai_output/);
 
   const changes = await client.get(`/workspaces/${aimsId}/changes`);
   assert.match(changes.text, /<h1 class="page-title">Change register<\/h1>/);
+  assert.doesNotMatch(changes.text, /A\.8\.32/, 'not even in the empty register\'s message');
+  assert.doesNotMatch(aims.text, /A\.5\.2[4-8]/);
+  assert.match(aims.text, /ISO 42001 A\.8\.4 asks for a plan/, 'A.8.4 is named as ISO 42001\'s, not ISO 27001\'s');
   assert.match(changes.text, /Model retrained, fine-tuned or replaced/);
   assert.match((await client.get(`/workspaces/${ismsId}/changes`)).text, /Change management register/);
 });
@@ -101,6 +105,8 @@ test('an AI incident records who must be told and by when, and a missed deadline
 
   const page = await client.get(`/workspaces/${aimsId}/incidents/${id}`);
   assert.match(page.text, /id="aims"[\s\S]*AI systems and telling those affected[\s\S]*Claims assistant/);
+  assert.doesNotMatch(page.text, /A\.5\.2[4-8]/, 'no ISO 27001 references on an ISO 42001 client\'s incident');
+  assert.match(page.text, /Lessons learned \(clause 10\.2\)/);
   assert.match(page.text, /What was told, and to whom/);
   const path = await client.get(`/workspaces/${aimsId}/iso42001/path`);
   assert.match(path.text, /Handle AI incidents and tell those affected<\/a>[\s\S]{0,400}1 notice past the deadline/);
