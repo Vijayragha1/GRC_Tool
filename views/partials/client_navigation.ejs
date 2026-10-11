@@ -19,9 +19,16 @@
   const csfOnly = hasCsf && !hasIso27001 && !hasIso42001 && !hasDpdpa;
   // The ISO 42001 engagement's stages (lib/iso42001-masthead.js LIFECYCLE and
   // GAP_ONLY_STEPS): a gap assessment only has the assessment and its report.
+  // A client whose only programme is ISO 42001 works from the module's path.
+  // The shared pages the path takes it to as steps leave the other groups of
+  // its menu (see the filter below the groups), and mark their stage here.
+  const aimsOnly = hasIso42001 && navFrameworks.length === 1 && !hasVciso;
+  const A42_SHARED_STAGE = { objectives: 'implement', 'metrics-library': 'implement', competence: 'implement', training: 'implement',
+    'communication-plan': 'implement', audits: 'assure', mrms: 'assure', nc: 'assure' };
   // The stage the open ISO 42001 page belongs to, if any.
   const a42StageOfPage = typeof a42PageStage === 'function' && typeof navActive === 'string' && navActive.indexOf('iso42001-') === 0
-    ? a42PageStage(navActive, gapAssessmentOnly) : null;
+    ? a42PageStage(navActive, gapAssessmentOnly)
+    : (aimsOnly && !gapAssessmentOnly ? A42_SHARED_STAGE[navActive] || null : null);
   const a42Stages = gapAssessmentOnly
     ? [['assess', 'Assess'], ['report', 'Report']]
     : [['mobilise', 'Mobilise'], ['assess', 'Assess'], ['implement', 'Implement'], ['assure', 'Assure'], ['readiness', 'Readiness'], ['certification', 'Certification']];
@@ -83,7 +90,7 @@
       id: 'ai-programme', label: gapAssessmentOnly ? 'ISO 42001 gap assessment' : 'AI management system',
       icon: '<path d="M12 3a4 4 0 0 0-4 4v1H7a3 3 0 0 0-3 3v2a3 3 0 0 0 3 3h1v1a4 4 0 0 0 8 0v-1h1a3 3 0 0 0 3-3v-2a3 3 0 0 0-3-3h-1V7a4 4 0 0 0-4-4z"/><path d="M9 10h6M9 14h6"/>',
       // Every module page keeps the group open.
-      active: [...a42Stages.map(([key]) => `iso42001-stage-${key}`), 'iso42001-overview', 'iso42001-path', 'iso42001-roles', 'iso42001-requests', 'iso42001-ai-systems', 'iso42001-datasets', 'iso42001-concerns', 'iso42001-context', 'iso42001-risks', 'iso42001-gap', 'iso42001-readiness', 'iso42001-catalog', 'iso42001-controls', 'iso42001-roadmap', 'iso42001-soa', 'iso42001-cert-cycle', 'iso42001-exec-brief'],
+      active: [...a42Stages.map(([key]) => `iso42001-stage-${key}`), ...(aimsOnly ? Object.keys(A42_SHARED_STAGE) : []), 'iso42001-overview', 'iso42001-path', 'iso42001-roles', 'iso42001-requests', 'iso42001-ai-systems', 'iso42001-datasets', 'iso42001-concerns', 'iso42001-context', 'iso42001-risks', 'iso42001-gap', 'iso42001-readiness', 'iso42001-catalog', 'iso42001-controls', 'iso42001-roadmap', 'iso42001-soa', 'iso42001-cert-cycle', 'iso42001-exec-brief'],
       // The overview, the path and the stages only. Every other module page
       // is a step on the path, reached from its stage, and marks that stage
       // here when it is open (lib/iso42001-masthead.js PAGE_STAGE).
@@ -219,6 +226,19 @@
       ]
     }
   ];
+  if (aimsOnly) {
+    // Records ISO 42001 does not use (assets, business continuity), the shared
+    // risk register (it opens the AI risk register for this client), and the
+    // pages that are steps on the path: objectives, competence, awareness,
+    // communication, internal audits, management reviews, nonconformities.
+    const AIMS_HIDDEN = new Set(['assets', 'risks', 'bcp', 'objectives', 'mrms', 'training', 'competence', 'communication-plan', 'audits', 'nonconformities']);
+    const hiddenItem = item => AIMS_HIDDEN.has(String(item.href).replace(`/workspaces/${ws.id}/`, ''));
+    const hiddenActive = new Set(navDomains.flatMap(d => d.items.filter(hiddenItem).flatMap(i => i.active)));
+    navDomains = navDomains
+      .map(d => (d.id === 'ai-programme' ? d : { ...d, items: d.items.filter(i => !hiddenItem(i)), active: d.active.filter(a => !hiddenActive.has(a)) }))
+      .filter(d => d.items.length)
+      .map(d => (d.id === 'risk' && !gapAssessmentOnly ? { ...d, label: 'Incidents & changes' } : d));
+  }
   const newExperience = typeof experienceEnabled !== 'undefined' && experienceEnabled;
   if (newExperience) {
     const original = navDomains;

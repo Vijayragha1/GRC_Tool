@@ -135,7 +135,9 @@ test('ISO 42001 navigation uses one shared plan and respects the gap-only servic
     assert.doesNotMatch(gap,/ISO 27001/);
     const full=await render('certification_support',experienceEnabled);
     assert.match(full,/href="\/workspaces\/42\/iso42001\/stages\/certification"/);
-    assert.match(full,/href="\/workspaces\/42\/audits"/);
+    // With ISO 42001 its only programme, internal audits are a step on the path.
+    assert.match(full,/href="\/workspaces\/42\/iso42001\/stages\/assure"/);
+    assert.doesNotMatch(full,/href="\/workspaces\/42\/audits"/);
   }
   const portal=await ejs.renderFile(path.join(__dirname,'../views/partials/client_portal_navigation.ejs'),{ws:{id:42,frameworks:['iso42001'],engagement_outcome:'gap_assessment_only'}});
   assert.match(portal,/Findings &amp; recommendations/);
