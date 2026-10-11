@@ -343,10 +343,17 @@
 </aside>
 
 <% if (typeof crosswalk !== 'undefined' && crosswalk.length) { %>
+<%# The compliance position each coverage label carries: how much of this
+    requirement the paired ISO 27001 record can be claimed against. Pairs are
+    not uniformly partial, so the claim belongs on the row, not the panel. %>
+<% const COVERAGE_CLAIM = {
+     full: 'Full match: the ISO 27001 record satisfies this requirement',
+     partial: 'Partial match: reuse what applies, then add what ISO 42001 asks for beyond it',
+     supporting: 'Supporting evidence only: a useful input, not credit towards this requirement',
+   }; %>
 <section class="panel" aria-labelledby="crosswalkTitle">
   <div class="panel-head">
     <h2 id="crosswalkTitle">Already on record for ISO 27001</h2>
-    <span class="meta">A partial match: reuse what applies, then add what ISO 42001 asks for beyond it</span>
   </div>
   <% crosswalk.forEach(c => { %>
     <div style="padding:10px 14px;border-top:1px solid var(--border);">
@@ -354,6 +361,7 @@
         <span class="mono text-xs meta"><%= c.code %></span>
         <a href="/workspaces/<%= ws.id %>/controls/<%= c.ref %>" class="link-muted text-base"><%= c.title.replace(/^(A\.)?[0-9.]+\s+/, '') %></a>
         <span class="status s-<%= String(c.status).toLowerCase().replace(/ /g, '-') %> text-xxs"><%= c.status %></span>
+        <% if (COVERAGE_CLAIM[c.coverage]) { %><span class="meta text-sm"><%= COVERAGE_CLAIM[c.coverage] %></span><% } %>
       </div>
       <% if (c.note) { %><div class="meta text-sm" style="margin-top:4px;">ISO 42001 adds: <%= c.note %></div><% } %>
       <% if (c.evidence.length) { %>

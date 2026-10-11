@@ -86,8 +86,53 @@ test('an ISO 42001 requirement shows the ISO 27001 record and reuses its evidenc
   assert.match(decodeURIComponent(refused.location), /not on record against a paired requirement/);
 });
 
+// The panel used to subhead every pair as "A partial match". On a supporting
+// pair that over-claims, so each row states its own coverage instead.
+test('each crosswalk row states its own coverage claim rather than a blanket partial one', async () => {
+  const supporting = await client.get(`/workspaces/${bothId}/iso42001/gap/ai-annex-a-7-3`);
+  assert.equal(supporting.status, 200, supporting.text.slice(0, 300));
+  assert.match(supporting.text, />A\.5\.32<\/span>/);
+  assert.match(supporting.text, /Supporting evidence only: a useful input, not credit towards this requirement/);
+  assert.doesNotMatch(supporting.text, /Partial match/, 'a supporting pair must not be shown as a partial match');
+  assert.match(supporting.text, /ISO 42001 adds: Rights to use acquired data are part of it/);
+
+  const partial = await client.get(`/workspaces/${bothId}/iso42001/gap/ai-annex-a-2-2`);
+  assert.equal(partial.status, 200);
+  assert.match(partial.text, /Partial match: reuse what applies, then add what ISO 42001 asks for beyond it/);
+  assert.doesNotMatch(partial.text, /Supporting evidence only/);
+  assert.doesNotMatch(partial.text, /A partial match:/, 'the blanket panel subhead is gone');
+});
+
 test('a client on ISO 42001 alone sees no ISO 27001 panel', async () => {
   const page = await client.get(`/workspaces/${aimsOnlyId}/iso42001/gap/ai-annex-a-2-2`);
   assert.equal(page.status, 200);
   assert.doesNotMatch(page.text, /Already on record for ISO 27001/);
+});
+
+// A label correction in the data file has to reach a database that has already
+// booted, because the pairs are inserted on the first boot and never again.
+// A pair a consultant has edited is still theirs.
+test('re-seeding corrects a stale coverage label but leaves an edited pair alone', () => {
+  const pair = db.prepare(`SELECT m.id, m.coverage, m.residual_gap_note AS note FROM requirement_mappings m
+    JOIN requirements a ON a.id = m.canonical_requirement_id JOIN frameworks fa ON fa.id = a.framework_id AND fa.code = 'iso27001'
+    JOIN requirements b ON b.id = m.mapped_requirement_id JOIN frameworks fb ON fb.id = b.framework_id AND fb.code = 'iso42001'
+    WHERE a.ref = ? AND b.ref = ?`);
+  const dataset = pair.get('annex-a.5.32', 'ai-annex-a-7-3');
+  const training = pair.get('annex-a.6.3', 'ai-annex-a-4-6');
+  assert.equal(dataset.coverage, 'supporting');
+  assert.equal(training.coverage, 'supporting');
+
+  // Both labelled as they were before 42854c5; the training pair is a consultant's own call.
+  db.prepare(`UPDATE requirement_mappings SET coverage='partial', residual_gap_note='stale' WHERE id IN (?, ?)`).run(dataset.id, training.id);
+  db.prepare(`UPDATE requirement_mappings SET mapped_by=? WHERE id=?`).run(actor.id, training.id);
+
+  const written = require('../lib/crosswalk-seed').seed(db);
+  assert.equal(written, 1, 'only the unedited pair is rewritten');
+  assert.deepEqual(pair.get('annex-a.5.32', 'ai-annex-a-7-3'), dataset);
+  assert.equal(pair.get('annex-a.6.3', 'ai-annex-a-4-6').coverage, 'partial');
+
+  db.prepare(`UPDATE requirement_mappings SET mapped_by=NULL WHERE id=?`).run(training.id);
+  assert.equal(require('../lib/crosswalk-seed').seed(db), 1);
+  assert.deepEqual(pair.get('annex-a.6.3', 'ai-annex-a-4-6'), training);
+  assert.equal(require('../lib/crosswalk-seed').seed(db), 0, 'a settled database is left untouched');
 });
