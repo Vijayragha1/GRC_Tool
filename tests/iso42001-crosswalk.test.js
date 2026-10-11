@@ -28,15 +28,39 @@ test.before(async () => {
 });
 test.after(async () => { db?.close(); await client?.close(); });
 
-test('the crosswalk pairs the shared clauses by number and the overlapping controls, all as partial', () => {
+// Every pair in the crosswalk carries its own coverage label. A pair whose two
+// control statements ask for different artefacts is 'supporting', not
+// 'partial': the ISO 27001 record is an input to the ISO 42001 work rather
+// than partial credit towards it, and a dual-track client must not be shown
+// credit it has not earned.
+const byCoverage = (coverage) => db.prepare(`SELECT b.ref AS ai, a.ref AS iso FROM requirement_mappings m
+  JOIN requirements a ON a.id = m.canonical_requirement_id
+  JOIN frameworks fa ON fa.id = a.framework_id AND fa.code = 'iso27001'
+  JOIN requirements b ON b.id = m.mapped_requirement_id
+  JOIN frameworks fb ON fb.id = b.framework_id AND fb.code = 'iso42001'
+  WHERE m.coverage = ? ORDER BY b.ref, a.ref`).all(coverage).map((r) => [r.ai, r.iso]);
+
+test('the crosswalk pairs the shared clauses by number and the overlapping controls, each with its own coverage label', () => {
   assert.deepEqual(pairs('ai-clause-4.1').map((p) => p.ref), ['clause-4.1']);
   assert.deepEqual(pairs('ai-clause-6.1.4'), [], 'the AI system impact assessment has no ISO 27001 counterpart');
   assert.deepEqual(pairs('ai-annex-a-10-3').map((p) => p.ref), ['annex-a.5.19', 'annex-a.5.21']);
   const policy = pairs('ai-annex-a-2-2');
   assert.equal(policy[0].ref, 'annex-a.5.1');
-  assert.ok(db.prepare(`SELECT COUNT(*) c FROM requirement_mappings m JOIN requirements b ON b.id = m.mapped_requirement_id
-    JOIN frameworks f ON f.id = b.framework_id AND f.code = 'iso42001' WHERE m.coverage != 'partial'`).get().c === 0);
+  assert.equal(policy[0].coverage, 'partial');
   assert.match(policy[0].residual_gap_note, /AI principles/);
+
+  // Secure development life cycle and acceptable use: two genuine partials.
+  assert.deepEqual(pairs('ai-annex-a-6-1-3').map((p) => [p.ref, p.coverage]), [['annex-a.8.25', 'partial']]);
+  assert.deepEqual(pairs('ai-annex-a-9-4').map((p) => [p.ref, p.coverage]), [['annex-a.5.10', 'partial']]);
+
+  // Nothing is full: ISO 42001 scopes every requirement to the AI systems, so
+  // the ISO 27001 record always has to be extended.
+  assert.deepEqual(byCoverage('full'), []);
+  assert.deepEqual(byCoverage('supporting'), [
+    ['ai-annex-a-4-6', 'annex-a.6.3'],
+    ['ai-annex-a-6-2-7', 'annex-a.5.37'],
+    ['ai-annex-a-7-3', 'annex-a.5.32'],
+  ]);
 });
 
 test('an ISO 42001 requirement shows the ISO 27001 record and reuses its evidence', async () => {
