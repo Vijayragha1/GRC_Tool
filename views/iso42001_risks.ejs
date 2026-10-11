@@ -21,7 +21,7 @@
     <div class="a42-stat"><span>Open AI risks</span><strong><%= c.open %></strong><em><%= c.withoutSystem %> not tied to an AI system</em></div>
     <div class="a42-stat<%= c.above ? ' is-attention' : '' %>"><span>Above the criteria</span><strong><%= c.above %></strong><em>High or critical, not accepted</em></div>
     <div class="a42-stat<%= c.untreated ? ' is-attention' : '' %>"><span>Not yet treated</span><strong><%= c.untreated %></strong><em>To reduce, with no control or action</em></div>
-    <div class="a42-stat<%= late || !due.last ? ' is-attention' : '' %>"><span>Next assessment</span><strong><%= due.due ? fmtDate(due.due) : 'Due now' %></strong><em><%= due.last ? `Last performed ${fmtDate(due.last)}` : 'Not yet performed' %></em></div>
+    <div class="a42-stat<%= late || !due.last ? ' is-attention' : '' %>"><span>Next assessment</span><strong><%= due.due ? fmtDate(due.due) : 'Due now' %></strong><em><%= due.reason ? due.reason : due.last ? `Last performed ${fmtDate(due.last)}` : 'Not yet performed' %></em></div>
   </section>
 
   <section class="panel" aria-labelledby="arListTitle">

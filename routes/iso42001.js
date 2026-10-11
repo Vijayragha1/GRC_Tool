@@ -1321,6 +1321,14 @@ function register(app, deps) {
       AND COALESCE(org_roles, '[]') IN ('[]', '') ORDER BY name LIMIT 20`).all(wsId);
     if (roleless.length) flags.push({ kind: 'roles_missing', label: 'In-scope AI systems with no recorded role for the organisation (clause 4.1)', severity: 'medium', items: roleless });
     if (!contextIssues || !contextParties) flags.push({ kind: 'context_missing', label: 'Internal and external issues or interested parties are not recorded (clauses 4.1 and 4.2)', severity: 'medium', items: [] });
+    // Incidents and changes as ISO 42001 reads them (lib/aims-operations.js).
+    const aimsOps = require('../lib/aims-operations');
+    const lateNotices = aimsOps.lateNotices(db, wsRow || { id: wsId });
+    if (lateNotices.length) flags.push({ kind: 'incident_notice_late', label: 'AI incidents whose users or others were not told by the deadline (A.8.4)', severity: 'high',
+      items: lateNotices.map(i => ({ id: i.id, title: i.title, href: `/workspaces/${wsId}/incidents/${i.id}#aims` })) });
+    const unassessed = aimsOps.unassessedChanges(db, wsRow || { id: wsId });
+    if (unassessed.length) flags.push({ kind: 'changes_unassessed', label: 'Significant changes to AI systems not yet followed by a new impact or risk assessment (clauses 8.2, 8.4)', severity: 'medium',
+      items: unassessed.map(c => ({ id: c.id, title: c.title, href: `/workspaces/${wsId}/changes/${c.id}#aims` })) });
     const lateReports = db.prepare(`SELECT id, summary AS title FROM ai_concern_reports WHERE workspace_id=? AND status != 'resolved'
       AND respond_by < date('now') ORDER BY respond_by LIMIT 20`).all(wsId);
     if (lateReports.length) flags.push({ kind: 'concerns_late', label: 'Concerns or reported adverse impacts past their response date (A.3.3, A.8.3)', severity: 'medium', items: lateReports });

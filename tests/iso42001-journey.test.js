@@ -32,16 +32,16 @@ test.after(async () => { db?.close(); await client?.close(); });
 
 test('a new engagement starts at the scoping questions, and every module page says so', async () => {
   const catalog = await client.get(`${base()}/exec-brief`);
-  assert.match(pathLine(catalog.text), /Next, step 1 of 27<\/span> <strong>Answer the scoping questions<\/strong>/, 'a page that is no step points to the next one');
+  assert.match(pathLine(catalog.text), /Next, step 1 of 29<\/span> <strong>Answer the scoping questions<\/strong>/, 'a page that is no step points to the next one');
   assert.match(pathLine(catalog.text), new RegExp(`href="${base()}/intake">Start`));
   const soa = await client.get(`${base()}/soa`);
-  assert.match(pathLine(soa.text), /This page is step 11 of 27.<\/span> Step 1 comes first: <strong>Answer the scoping questions<\/strong>/);
+  assert.match(pathLine(soa.text), /This page is step 11 of 29.<\/span> Step 1 comes first: <strong>Answer the scoping questions<\/strong>/);
 
   const intake = await client.get(`${base()}/intake`);
-  assert.match(pathLine(intake.text), /Step 1 of 27<\/span> <strong>Answer the scoping questions<\/strong> is done on this page<span class="a42-path-detail"> · 0 of 5 required answers given/);
+  assert.match(pathLine(intake.text), /Step 1 of 29<\/span> <strong>Answer the scoping questions<\/strong> is done on this page<span class="a42-path-detail"> · 0 of 5 required answers given/);
 
   const overview = await client.get(`${base()}/overview`);
-  assert.match(overview.text, /Your path · step 1 of 27/);
+  assert.match(overview.text, /Your path · step 1 of 29/);
   assert.doesNotMatch(overview.text, /class="a42-path"/, 'the overview leads with the next step, so the band does not repeat it');
   assert.match(overview.text, new RegExp(`href="${base()}/intake">Start step 1`));
 });
@@ -51,18 +51,18 @@ test('the next step moves on as the records appear', async () => {
     db.prepare(`INSERT INTO iso42001_intake_answers (workspace_id, question_key, answer) VALUES (?, ?, 'Answered')`).run(wsId, key);
   }
   const intake = await client.get(`${base()}/intake`);
-  assert.match(pathLine(intake.text), /Step 1 is done.<\/span> Next, step 2 of 27: <strong>List the AI systems in scope<\/strong>/);
+  assert.match(pathLine(intake.text), /Step 1 is done.<\/span> Next, step 2 of 29: <strong>List the AI systems in scope<\/strong>/);
   assert.match(pathLine(intake.text), new RegExp(`href="${base()}/ai-systems">Go to step 2`));
 
   const system = Number(db.prepare(`INSERT INTO ai_systems (workspace_id, name, lifecycle_stage, in_scope, created_by) VALUES (?, 'Writing assistant', 'in_use', 1, ?)`)
     .run(wsId, actor.id).lastInsertRowid);
   const roles = await client.get(`${base()}/roles`);
-  assert.match(pathLine(roles.text), /Step 3 of 27<\/span> <strong>Say what the organisation does with each AI system<\/strong> is done on this page<span class="a42-path-detail"> · 0 of 1 AI system answered/);
+  assert.match(pathLine(roles.text), /Step 3 of 29<\/span> <strong>Say what the organisation does with each AI system<\/strong> is done on this page<span class="a42-path-detail"> · 0 of 1 AI system answered/);
 
   const version = db.prepare('SELECT version FROM ai_systems WHERE id=?').get(system).version;
   await client.post(`${base()}/roles/${system}`, { version, role_builds: 'no', role_trains: 'no', role_sourced: 'yes', role_uses: 'yes', role_offers: 'no', role_partners: 'no' });
   const after = await client.get(`${base()}/roles`);
-  assert.match(pathLine(after.text), /Next, step 4 of 27: <strong>Record the context and interested parties<\/strong>/);
+  assert.match(pathLine(after.text), /Next, step 4 of 29: <strong>Record the context and interested parties<\/strong>/);
 });
 
 test('a step waits on the one it needs, and a step the organisation does not need is skipped', async () => {
@@ -84,7 +84,7 @@ test('a step waits on the one it needs, and a step the organisation does not nee
   await client.post(`${base()}/soa/ai-annex-a-4-3`, { applicability: 'excluded', justification: 'No data of ours goes into the assistant' });
   const skipped = await client.get(`${base()}/path`);
   assert.match(step(skipped.text, 'Record the data behind each AI system'), /class="is-skip"[\s\S]*Not needed<\/span> · A\.4\.3 is excluded/);
-  assert.match(pathLine((await client.get(`${base()}/soa`)).text), / of 26\./, 'a skipped step leaves the count');
+  assert.match(pathLine((await client.get(`${base()}/soa`)).text), / of 28\./, 'a skipped step leaves the count');
 });
 
 test('a gap assessment opens on its short path, which ends with the report', async () => {

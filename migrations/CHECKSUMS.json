@@ -80,5 +80,6 @@
   "078_review_and_objective_inputs.js": "10a4118fc51b08b50046a2eaf2797f8cc2cb59c431df1c271f2a9ae55eca8d4d",
   "079_risk_ownership.js": "05860d3de7f185ae7f916ef86d80f0c0e666078125d3d6d7d8a1f19758c81689",
   "080_ai_role_answers.js": "c7b94ccb9717b733725725fa0ea66c5b0c199fb5497f29e36283f1b5fc2371c5",
-  "081_ai_system_role_fields.js": "e7f3ada1b274c552e5f2b45e97d660f2a9642373173c0d8075c481ec2057cf97"
+  "081_ai_system_role_fields.js": "e7f3ada1b274c552e5f2b45e97d660f2a9642373173c0d8075c481ec2057cf97",
+  "082_ai_incidents_and_changes.js": "aa626eba05c429a9ac57ab00b1ab79b83d64907fd92c54c0266f0660fb0c9694"
 }
