@@ -48,13 +48,13 @@
     <div class="col-full"><label class="label">Description</label><textarea class="textarea" name="description" rows="3"><%= inc.description || '' %></textarea></div>
 
     <div class="col-full" style="border-top:1px solid var(--border);padding-top:12px;">
-      <div class="sec-label">Response timeline (A.5.26)</div>
+      <div class="sec-label">Response timeline (<%= aims.aimsOnly ? 'ISO 42001 A.6.2.6' : 'A.5.26' %>)</div>
     </div>
     <div class="col-full"><label class="label">Containment actions</label><textarea class="textarea" name="containment_actions" rows="2"><%= inc.containment_actions || '' %></textarea></div>
     <div class="col-full"><label class="label">Eradication actions</label><textarea class="textarea" name="eradication_actions" rows="2"><%= inc.eradication_actions || '' %></textarea></div>
     <div class="col-full"><label class="label">Recovery actions</label><textarea class="textarea" name="recovery_actions" rows="2"><%= inc.recovery_actions || '' %></textarea></div>
     <div class="col-full"><label class="label"><%= aims.iso42001 ? 'What was told, and to whom (users, customers, regulators, law enforcement)' : 'External notification (regulators, customers, law enforcement)' %></label><textarea class="textarea" name="external_notification" rows="2"><%= inc.external_notification || '' %></textarea></div>
-    <div class="col-full"><label class="label">Lessons learned (A.5.27)</label><textarea class="textarea" name="lessons_learned" rows="3"><%= inc.lessons_learned || '' %></textarea></div>
+    <div class="col-full"><label class="label">Lessons learned (<%= aims.aimsOnly ? 'clause 10.2' : 'A.5.27' %>)</label><textarea class="textarea" name="lessons_learned" rows="3"><%= inc.lessons_learned || '' %></textarea></div>
 
     <div class="col-full row">
       <button class="btn btn-primary">Save</button>
@@ -158,7 +158,7 @@
 </div>
 
 <div class="panel" style="margin-top:14px">
-  <div class="panel-head"><h2>Post-incident review (A.5.27)</h2></div>
+  <div class="panel-head"><h2>Post-incident review (<%= aims.aimsOnly ? 'clause 10.2' : 'A.5.27' %>)</h2></div>
   <form method="POST" action="/workspaces/<%= ws.id %>/incidents/<%= inc.id %>/pir" class="panel-pad">
     <textarea class="textarea" name="pir_summary" rows="4" placeholder="Root cause, control failures, action items, target dates."><%= inc.pir_summary || '' %></textarea>
     <button class="btn btn-primary btn-xs" style="margin-top:8px;"><%= inc.pir_completed ? 'Update' : 'Complete' %> PIR</button>
