@@ -85,7 +85,7 @@ test('before any assessment is recorded, the register downloads as the live regi
   assert.equal(rows.length, 2);
   assert.ok(rows[0].startsWith(`R-${driftId},Scores drift against older applicants,Approval rates for applicants over 60 fall as the model ages,Credit scoring model,`
     + '"Data: quality, bias, provenance or rights",Head of Credit Risk,4,3,4,2,4,16,high,Reduce it (modify),Open,2,3,medium,A.6.2.4 AI system verification and validation,'
-    + 'Open,Quarterly fairness test by age band · Model risk lead · due 2026-12-31 · in_progress,"Dana Okafor, Chief Risk Officer",'), rows[0]);
+    + 'Open,Quarterly fairness test by age band · Model risk lead · due 2026-12-31 · In progress,"Dana Okafor, Chief Risk Officer",'), rows[0]);
   assert.match(rows[0], /,Live register,\d{4}-\d{2}-\d{2},No$/);
   assert.match(rows[1], /,"'=HYPERLINK\(""http:\/\/example\.test"",""click""\)",/, 'a title a spreadsheet would run as a formula is defused');
 
@@ -106,6 +106,12 @@ test('a recorded assessment downloads as sealed, with its criteria, treatment an
   assert.equal(res.status, 200, res.text.slice(0, 200));
   assert.match(res.headers['content-type'], /officedocument\.wordprocessingml\.document/);
   assert.equal(res.buffer.subarray(0, 2).toString('ascii'), 'PK');
+  // The Word file keeps its headings, labels and column headers (lib/docx-html.js).
+  const xml = unzip(res.buffer)['word/document.xml'].replace(/<[^>]+>/g, '');
+  for (const kept of ['AI Risk Register - 2026-10-01', 'This register', 'Basis', 'Seal (SHA-256)', 'Risk criteria', 'Risk levels',
+    'AI risks as assessed (2)', 'Impact: org · people · society', 'Treatment and sign-off on', 'Residual risk accepted by']) {
+    assert.ok(xml.includes(kept), `the Word file says "${kept}"`);
+  }
 
   const word = reports().aiRiskRegister(db, ws(aimsId), loadRecord(recordId));
   assert.equal(word.title, 'AI Risk Register - 2026-10-01');
@@ -119,7 +125,7 @@ test('a recorded assessment downloads as sealed, with its criteria, treatment an
   assert.match(word.body, /Reduce it \(modify\)/);
   assert.match(word.body, /A\.6\.2\.4 AI system verification and validation/);
   assert.match(word.body, /Treatment and sign-off on \d{4}-\d{2}-\d{2}<\/h2><p>From the live register on the day this document was produced, not from the sealed record\.<\/p>/);
-  assert.match(word.body, /Quarterly fairness test by age band<\/strong><br><span class="meta">Model risk lead · due 2026-12-31 · in_progress/);
+  assert.match(word.body, /Quarterly fairness test by age band<\/strong><br><span class="meta">Model risk lead · due 2026-12-31 · In progress/);
   assert.match(word.body, /Dana Okafor, Chief Risk Officer<br><span class="meta">on \d{4}-\d{2}-\d{2}, until 2027-10-01/);
   assert.match(word.body, /Next assessment due<\/th><td>2027-10-01/, 'the latest record says when the next is due');
 
