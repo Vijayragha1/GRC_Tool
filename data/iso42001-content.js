@@ -156,9 +156,11 @@ module.exports = {
 
   'ai-clause-5.2': {
     purpose: "Requires a documented AI policy approved at the top - the single artefact that says what the organization commits to in its development, provision, and use of AI. Distinct from an information-security policy because the commitments are different (fairness, transparency, human oversight, safety, sustainability, etc., in addition to security and privacy).",
-    what_good_looks_like: "A 1-3 page AI policy approved by top management, dated and versioned. It states the organization's purpose for AI, the principles it commits to (typically fairness, transparency, accountability, safety, human oversight, privacy and security), prohibited uses (e.g., social-scoring, weaponisation, autonomous action above defined thresholds), and the framework for setting AI objectives. It explicitly references applicable obligations (EU AI Act, sectoral regulation, internal commitments). It is communicated to all staff who develop or use AI, and made externally available where appropriate. It is reviewed annually or on triggering events.",
+    what_good_looks_like: "A 1-3 page AI policy approved by top management, dated and versioned. It states the organization's purpose for AI, the principles it commits to (typically fairness, transparency, accountability, safety, human oversight, privacy and security), and the framework for setting AI objectives. Three things Clause 5.2 requires it to take into account are visible on the page, not implied: the business strategy for AI (what the organization is building or buying AI to do, over what horizon); the organization's values and culture, and how they bound acceptable AI use; and the level of AI risk the organization is willing to pursue or retain - an AI risk appetite stated concretely enough that a risk owner can apply it, and consistent with the risk acceptance criteria in the 6.1.2 methodology. It explicitly references applicable obligations (EU AI Act, sectoral regulation, internal commitments). VA also advises stating prohibited uses (e.g., social scoring, weaponisation, autonomous action above defined thresholds); that is Annex B guidance for A.2.2 rather than a Clause 5.2 requirement, but it is what makes the policy usable by staff. It is communicated to all staff who develop or use AI, and made externally available where appropriate. It is reviewed on a defined cadence and on triggering events.",
     common_pitfalls: [
-      "Policy is a list of principles with no prohibitions - staff cannot tell what they cannot do",
+      "No stated AI risk appetite - the policy commits to principles but never says how much AI risk the organization will carry, so 6.1.2 acceptance criteria have nothing to anchor to. Clause 5.2 requires it to be taken into account",
+      "Business strategy and organizational values not reflected - the policy would read identically at any company in any sector",
+      "Policy is a list of principles with no prohibitions - staff cannot tell what they cannot do (VA advice, via A.2.2, not a 5.2 gate)",
       "Policy is the public AI marketing page lightly edited - good for PR, useless for governance",
       "Approved by a middle manager, not top management",
       "Not communicated to people who build or use AI - it lives only in the AIMS folder",
@@ -166,15 +168,17 @@ module.exports = {
     ],
     evidence_to_look_for: [
       { item: "AI policy, dated and approved at the documented authority level", what_it_tells_you: "Whether the policy exists in the form Clause 5.2 requires" },
+      { item: "The passage of the policy that states the AI risk appetite, read next to the risk acceptance criteria in the 6.1.2 methodology", what_it_tells_you: "Whether the appetite was taken into account, and whether policy and methodology agree" },
+      { item: "The passage tying the policy to the business strategy and to the organization's values", what_it_tells_you: "Whether the policy was written for this organization" },
       { item: "Communication and acknowledgement records (training, intranet, onboarding)", what_it_tells_you: "Whether staff have seen the policy" },
       { item: "Public-facing variant where the policy commits to external transparency", what_it_tells_you: "Whether external commitments match internal reality" },
       { item: "Review records showing the policy has been re-examined", what_it_tells_you: "Whether the policy is alive or static" }
     ],
     scoping_notes: "Some organizations bundle responsible-AI principles into a wider corporate code of conduct; ISO 42001 requires that there is an AI policy specifically. A code of conduct can suffice if it has an AI section with the required commitments. A separate AI policy is usually clearer.",
     maturity_ladder: {
-      1: "No AI policy, or a generic AI-ethics statement without commitments or prohibitions",
-      2: "AI policy approved and communicated; covers principles and applicable obligations",
-      3: "Policy is the explicit reference point for AI development and use decisions; staff cite it; reviewed annually",
+      1: "No AI policy, or a generic AI-ethics statement with no commitments",
+      2: "AI policy approved and communicated; covers principles and applicable obligations; takes account of the business strategy, the organization's values, and the level of AI risk it is willing to pursue or retain",
+      3: "Prohibited and restricted uses stated explicitly (VA advice via A.2.2); policy is the explicit reference point for AI development and use decisions; staff cite it; reviewed on the defined cadence",
       4: "Policy is updated on regulatory and business triggers; effectiveness measured (e.g., decisions deferred or escalated as a result of policy)"
     },
     related_items: ['ai-clause-5.1', 'ai-clause-5.3', 'ai-annex-a-2-2', 'ai-annex-a-2-3', 'ai-annex-a-2-4']
@@ -231,22 +235,23 @@ module.exports = {
   },
 
   'ai-clause-6.1.2': {
-    purpose: "Requires an AI risk assessment process that establishes criteria, identifies risks to and from AI systems, analyses them, and evaluates them against criteria. The critical distinction from ISO 27001 is that AI risks are not only CIA-style information security risks - they include fairness, opacity, robustness, automation bias, misuse, environmental, and societal categories drawn from Annex C.",
-    what_good_looks_like: "A documented AI risk methodology with explicit risk criteria (likelihood scale, consequence scale across categories, acceptance thresholds). The categories explicitly cover Annex C topics - bias and fairness, robustness, security and privacy, transparency, oversight, environmental, and societal. Each in-scope AI system has at least one assessment, with named risk owner, analysis, evaluation, and traceability to treatment (6.1.3) or acceptance. Assessments are repeatable - two analysts using the same methodology on the same system reach comparable results.",
+    purpose: "Requires an AI risk assessment process that establishes criteria, identifies risks to and from AI systems, analyses them, and evaluates them against criteria. The critical distinction from ISO 27001 is that AI risks are not only CIA-style information security risks - they include fairness, opacity, robustness, automation bias, misuse, environmental, and societal categories. The informative Annex C collects risk sources of this kind and is a useful prompt list, but the clause requires the risk identification, not the citation.",
+    what_good_looks_like: "A documented AI risk methodology with explicit risk criteria (likelihood scale, consequence scale across categories, acceptance thresholds) retained as documented information, so the criteria used in last year's assessment can be compared with this year's. The categories cover the AI-specific ground - bias and fairness, robustness, security and privacy, transparency, oversight, environmental, and societal. Each in-scope AI system has at least one assessment, with named risk owner, analysis, evaluation, and traceability to treatment (6.1.3) or acceptance. Assessments produce consistent, valid and comparable results - two analysts using the same methodology on the same system reach comparable ratings, and a re-run next year is comparable to this year's.",
     common_pitfalls: [
       "Methodology silently copies the ISO 27001 risk method - AI risks are evaluated only along CIA, missing fairness, robustness, automation bias, etc.",
       "Risk criteria absent or different across assessments, so results aren't comparable",
-      "Annex C risk sources never referenced; assessor relies on intuition",
+      "No prompt list at all behind the identification step - the assessor works from intuition and the AI-specific sources (bias, automation bias, drift, misuse) get missed. Annex C is informative, so not citing it is not a nonconformity; having nothing in its place is what produces the finding",
       "Risk owners are roles (\"the data team\") not named individuals",
       "Risks identified but treatment unclear - the bridge to 6.1.3 is missing"
     ],
     evidence_to_look_for: [
       { item: "AI risk assessment methodology document with criteria explicit", what_it_tells_you: "Whether assessments are repeatable and AI-aware" },
       { item: "AI risk register with at least one entry per in-scope AI system", what_it_tells_you: "Whether the methodology is actually applied" },
-      { item: "Two assessments performed by different analysts that converge on similar risk ratings", what_it_tells_you: "Whether the methodology produces comparable results" },
-      { item: "Annex C risk-source coverage in the methodology", what_it_tells_you: "Whether the assessment is AI-aware" }
+      { item: "Two assessments performed by different analysts that converge on similar risk ratings", what_it_tells_you: "Whether the methodology produces consistent, valid and comparable results as 6.1.2 requires" },
+      { item: "Retained risk criteria (versioned), referenced by the assessments that used them", what_it_tells_you: "Whether the criteria were established and maintained, or re-invented per assessment" },
+      { item: "A documented prompt list of AI risk sources behind the identification step - Annex C is a good one, so are NIST AI RMF and the organization's own incident history", what_it_tells_you: "Whether identification is systematic or intuitive. VA recommends Annex C; it is informative, so an equivalent list is equally acceptable" }
     ],
-    scoping_notes: "Risk assessment frequency: at least annually per in-scope AI system, plus on significant change (re-training, intended-use change, new deployment context). Where many AI systems are similar (e.g., variants of one model in many languages), one assessment with documented system-specific deltas is acceptable.",
+    scoping_notes: "Frequency is the organization's to set: Clause 8.2 requires AI risk assessment at planned intervals that the organization defines, and when significant changes are proposed or occur. VA recommended practice is at least annually per in-scope AI system plus on significant change (re-training, intended-use change, new deployment context) - recommend it, and ask the client to record the interval it chose and the rationale, rather than quoting annual as a requirement of the standard. Where many AI systems are similar (e.g., variants of one model in many languages), one assessment with documented system-specific deltas is acceptable.",
     maturity_ladder: {
       1: "No documented AI risk methodology; assessments are ad hoc or reuse ISO 27001 method without adaptation",
       2: "Methodology documented with AI-specific criteria; assessments performed for each in-scope AI system",
@@ -365,12 +370,15 @@ module.exports = {
     common_pitfalls: [
       "AIMS is funded out of unspecified slack in other budgets - no record of what's spent",
       "AI-specific tooling (monitoring, fairness eval, bias detection) is absent because nobody owns the procurement decision",
-      "Staffing assumes existing security/data-protection staff can absorb AI duties without adjustment"
+      "Staffing assumes existing security/data-protection staff can absorb AI duties without adjustment",
+      "Resources were determined once at AIMS set-up and never reviewed for adequacy - this is where the 7.1 finding usually sits, not in the absence of resources. Ask who looked at adequacy, when, and what changed as a result",
+      "The AI footprint grew (a second in-scope system, a new jurisdiction, a larger model) but the resource determination was not revisited"
     ],
     evidence_to_look_for: [
       { item: "Budget records identifying AIMS-related spend", what_it_tells_you: "Whether resources are real" },
       { item: "Tooling inventory covering monitoring, evaluation, registry, lineage", what_it_tells_you: "Whether the operational tools exist" },
-      { item: "Management-review discussion of resource adequacy", what_it_tells_you: "Whether resources are actively reviewed" }
+      { item: "Management-review minutes where resource adequacy was discussed, with the conclusion reached", what_it_tells_you: "Whether adequacy is reviewed, or only the existence of a budget is recorded" },
+      { item: "A resource request or re-plan triggered by AIMS demand (a hire, a tool purchase, reassigned time)", what_it_tells_you: "Whether a reviewed shortfall actually produces a change" }
     ],
     scoping_notes: "Open-source tooling counts - what matters is that the capability exists, not who's paying for the tool. Document which tools are in use.",
     maturity_ladder: {
@@ -432,14 +440,15 @@ module.exports = {
 
   'ai-clause-7.4': {
     purpose: "Communications about the AIMS must be planned - internal (status, incidents, decisions) and external (regulators, partners, affected parties, public). For AI this is consequential because incidents, model behaviour changes, and disclosure obligations all involve communication; the wrong communication or none at all can convert a manageable event into a reputational or regulatory crisis.",
-    what_good_looks_like: "A communications plan or matrix lists planned internal and external communications - what, when, to whom, by whom, how. Authority to communicate externally is explicit (e.g., only the executive sponsor or designated comms team speaks on AI matters to regulators). Templates exist for high-stakes communications (incident notification, transparency disclosure). The plan is exercised periodically (drill or real event review).",
+    what_good_looks_like: "A communications plan or matrix lists planned internal and external communications across all five dimensions the clause names - what is communicated, when, with whom, by whom, and how. The \"when\" column is the one most often missing: each entry carries either a cadence (monthly AIMS status to the steering group) or a trigger with a time bound (AI incident meeting the severity threshold - regulator notified inside the applicable statutory window; material model behaviour change - affected customers informed before the change is live). Authority to communicate externally is explicit (e.g., only the executive sponsor or designated comms team speaks on AI matters to regulators). Templates exist for high-stakes communications (incident notification, transparency disclosure). The plan is exercised periodically (drill or real event review).",
     common_pitfalls: [
       "No external-comms templates - real incident response is improvised",
+      "The matrix says what and to whom but not when - no cadence and no trigger, so nothing is ever late and nothing is ever on time",
       "Authority to speak externally is unclear; everyone or nobody",
       "Internal escalation paths for AI ethical concerns are not communicated"
     ],
     evidence_to_look_for: [
-      { item: "Communications matrix or plan", what_it_tells_you: "Whether comms are planned or reactive" },
+      { item: "Communications matrix or plan with a populated \"when\" column (cadence or trigger) per entry", what_it_tells_you: "Whether comms are planned or reactive, and whether timing was ever decided" },
       { item: "Pre-approved templates for AI incident notification, customer disclosures, regulator notification", what_it_tells_you: "Whether templates support quick response" },
       { item: "Authorisation matrix for external comms", what_it_tells_you: "Whether the wrong person can speak on the wrong topic" }
     ],
@@ -601,7 +610,7 @@ module.exports = {
 
   'ai-clause-9.2': {
     purpose: "Conducts internal audits at planned intervals to determine whether the AIMS conforms to ISO 42001 and the organization's own requirements, and is effectively implemented and maintained.",
-    what_good_looks_like: "An audit programme runs annually covering all AIMS clauses and Annex A controls in scope. Auditors are competent, impartial (not auditing their own work), and follow a documented method. Findings are written as objective nonconformities or improvement opportunities. Corrective actions are tracked and effectiveness verified. Audit reports go to management review.",
+    what_good_looks_like: "What the clause requires: an audit programme exists, it runs at planned intervals that the organization itself defines, and the planning is risk-based - the clause sets no frequency. What certification bodies expect in practice: at least one full internal audit covering all AIMS clauses and all Annex A controls in scope, completed and closed out before the Stage 2 audit; most clients then settle on an annual programme, sometimes split across the year by area. Auditors are competent, impartial (not auditing their own work), and follow a documented method. Findings are written as objective nonconformities or improvement opportunities. Corrective actions are tracked and effectiveness verified. Audit reports go to management review.",
     common_pitfalls: [
       "Audit done by the AIMS owner - no impartiality",
       "Audit covers only documentation; no operational testing",
@@ -613,10 +622,10 @@ module.exports = {
       { item: "Audit reports with findings, owners, deadlines", what_it_tells_you: "Whether audits are productive" },
       { item: "Corrective action records with effectiveness verification", what_it_tells_you: "Whether the loop closes" }
     ],
-    scoping_notes: "External or rotated internal auditors satisfy impartiality. Auditing both the AIMS and the underlying AI systems is required - it's not enough to audit only the management system.",
+    scoping_notes: "External or rotated internal auditors satisfy impartiality. Auditing both the AIMS and the underlying AI systems is required - it's not enough to audit only the management system. On frequency, hold the two apart when you write the finding: \"no planned intervals defined\" or \"the programme was not followed\" is a nonconformity against 9.2; \"intervals defined as every 18 months\" is a conversation about whether the CB will accept it, not a nonconformity on its face.",
     maturity_ladder: {
       1: "Internal audit absent or limited to documentation review",
-      2: "Annual audit covering AIMS and AI systems; impartiality maintained",
+      2: "Programme defines planned intervals and is followed; one full pass over AIMS and AI systems completed; impartiality maintained",
       3: "Findings drive measurable improvements; effectiveness verified",
       4: "Audit programme risk-based; high-risk areas audited more frequently; audit quality reviewed"
     },
@@ -625,22 +634,24 @@ module.exports = {
 
   'ai-clause-9.3': {
     purpose: "Top management reviews the AIMS at planned intervals, considering the required inputs (audit results, performance, incidents, risk and impact assessment results, etc.) and produces outputs (decisions on improvement and changes).",
-    what_good_looks_like: "Management review runs at least annually, more often where the AIMS is young or change-intensive. The required inputs (9.3.2) are explicitly covered. Outputs are decisions, not summaries - resource changes, objective changes, scope changes, accepted residual risks. Minutes are signed and traceable to subsequent actions. The executive sponsor attends.",
+    what_good_looks_like: "What the clause requires: top management reviews the AIMS at planned intervals that the organization defines, and the review covers every input 9.3.2 lists. The clause sets no frequency. What certification bodies expect in practice: at least one complete management review, with all inputs covered and decisions recorded, before the Stage 2 audit; most clients then run an annual deep review, often with quarterly shorter sessions where the AIMS is young or change-intensive. The required inputs (9.3.2) are explicitly covered: status of actions from previous reviews; changes in external and internal issues; changes in the needs and expectations of interested parties; AIMS performance - nonconformities and corrective actions, monitoring and measurement results, audit results, fulfilment of AI objectives; adequacy of resources; effectiveness of the actions taken on AI risks and opportunities; and opportunities for continual improvement. AI system impact assessment results reach the table with their material findings. Outputs are decisions, not summaries - resource changes, objective changes, scope changes, accepted residual risks. Minutes are signed and traceable to subsequent actions. The executive sponsor attends.",
     common_pitfalls: [
       "Review held but inputs are summarised in slides without supporting evidence",
       "Output is \"continue current approach\" with no decisions recorded",
-      "Required inputs missing - especially impact-assessment results, which often aren't presented",
+      "Required inputs missing - especially impact-assessment results, which often aren't presented. Resource adequacy and the effectiveness of risk and opportunity actions are the next two most commonly skipped",
+      "Agenda does not follow 9.3.2, so coverage has to be reconstructed from the minutes and some inputs turn out never to have been raised",
       "Executive sponsor sends a delegate"
     ],
     evidence_to_look_for: [
-      { item: "Management-review schedule and agenda", what_it_tells_you: "Whether the review is planned" },
+      { item: "Management-review schedule and agenda, with the agenda structured on the 9.3.2 input list", what_it_tells_you: "Whether the review is planned and whether coverage is demonstrable rather than reconstructed" },
       { item: "Minutes covering all required inputs and showing decisions made", what_it_tells_you: "Whether the review meets the clause" },
+      { item: "The review pack itself - audit results, monitoring data, nonconformity status, objective status, impact assessment results", what_it_tells_you: "Whether top management reviewed evidence or a narrative" },
       { item: "Actions arising from review traceable to subsequent records", what_it_tells_you: "Whether the review is consequential" }
     ],
-    scoping_notes: "ISO 42001 9.3.2 lists specific inputs; a structured agenda covering each one is the easiest way to demonstrate coverage. Quarterly mini-reviews with an annual deep review is a common pattern.",
+    scoping_notes: "ISO 42001 9.3.2 lists specific inputs; a structured agenda covering each one is the easiest way to demonstrate coverage. Quarterly mini-reviews with an annual deep review is a common pattern, and a pattern we recommend - but the interval is the client's to define, so record the interval it chose and the rationale rather than asserting annual as a requirement. A missing input is a nonconformity against 9.3.2; an interval you would have set differently is advice.",
     maturity_ladder: {
-      1: "Review is a single annual meeting; minutes are sparse",
-      2: "Review covers all required inputs; outputs documented",
+      1: "Review happens irregularly with no defined interval; minutes are sparse",
+      2: "Interval defined and met; review covers all required inputs; outputs documented",
       3: "Review drives measurable changes; cadence proportional to AIMS maturity",
       4: "Review is the steering function of the AIMS - decisions on objectives, scope, investment originate here"
     },
@@ -702,9 +713,9 @@ module.exports = {
   // A.2 Policies related to AI
   'ai-annex-a-2-2': {
     purpose: "The most-asked-about Annex A control. Forces the AI policy to exist as a written, approved artefact - not a deck, not a webpage. Without it, every other Annex A.2 control has nothing to align to.",
-    what_good_looks_like: "A 1-3 page AI policy document, dated, version-controlled, approved by named top management. It commits the organization to responsible-AI principles (typically fairness, transparency, accountability, safety, oversight, privacy, security). It states what the organization will not do (prohibited uses - e.g., social scoring, mass surveillance, weapons applications, fully autonomous decisions affecting individuals' fundamental rights). It defines the scope of activities covered (develop / provide / deploy / use). It is communicated to staff and made externally available where appropriate.",
+    what_good_looks_like: "A 1-3 page AI policy document, dated, version-controlled, approved by named top management. It commits the organization to responsible-AI principles (typically fairness, transparency, accountability, safety, oversight, privacy, security). VA strongly advises it also state what the organization will not do (prohibited uses - e.g., social scoring, mass surveillance, weapons applications, fully autonomous decisions affecting individuals' fundamental rights); Annex B guidance for A.2.2 points at boundaries on use, and a policy without them leaves staff unable to tell what is off-limits - but a policy that omits them is not by itself a nonconformity. It defines the scope of activities covered (develop / provide / deploy / use). It is communicated to staff and made externally available where appropriate.",
     common_pitfalls: [
-      "Policy is a list of principles with no prohibited uses",
+      "Policy is a list of principles with no prohibited or restricted uses - raise it as advice, not as a nonconformity against A.2.2",
       "Approved at director level when board approval was required by internal governance",
       "Doesn't reference the organization's actual AI footprint or sector",
       "Published externally before internal alignment - PR moves ahead of governance"
@@ -717,8 +728,8 @@ module.exports = {
     scoping_notes: "Some organizations bundle the policy into a Code of Conduct or a broader Responsible Technology policy. That's fine if the AI-specific section meets the requirements. A standalone AI policy is usually clearer.",
     maturity_ladder: {
       1: "No AI policy or only a generic statement of principles",
-      2: "AI policy approved, dated, communicated; covers principles and prohibited uses",
-      3: "Policy is the explicit reference for AI decisions; staff cite it; reviewed annually",
+      2: "AI policy approved, dated, communicated; covers responsible-AI principles and the activities in scope (develop / provide / deploy / use)",
+      3: "Prohibited and restricted uses stated explicitly (VA advice, per Annex B guidance for A.2.2); policy is the explicit reference for AI decisions; staff cite it; reviewed on the defined cadence",
       4: "Policy reflects lessons from incidents and reviews; effectiveness measured (decisions deferred / escalated as a result)"
     },
     related_items: ['ai-clause-5.2', 'ai-annex-a-2-3', 'ai-annex-a-2-4']
