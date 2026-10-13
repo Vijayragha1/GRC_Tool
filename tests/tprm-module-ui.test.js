@@ -194,6 +194,26 @@ test('controlled register export keeps consultancy advice and the client decisio
   assert.doesNotMatch(response.text, /Legacy consultancy-authored decision|Historic firm-authored supplier decision/);
 });
 
+test('third-party intake that is too short goes back to the form and says which field', async () => {
+  const newPath = `/workspaces/${activeWorkspaceId}/tprm/third-parties/new`;
+  const page = await client.get(newPath);
+  for (const field of ['name', 'service_provided', 'business_owner', 'relationship_owner']) {
+    assert.match(page.text, new RegExp(`name="${field}" required minlength="2"`), `${field} says it needs two characters before submitting`);
+  }
+  const action = `/workspaces/${activeWorkspaceId}/vendors`;
+  const form = formFor(page.text, action);
+  const res = await client.post(action, { _csrf: hiddenValue(form, '_csrf'), name: 'q', service_provided: 'q', business_owner: 'Client Owner', relationship_owner: 'q', contact: 'not-an-email' });
+  assert.equal(res.status, 303);
+  const location = decodeURIComponent(String(res.headers.location || ''));
+  assert.ok(location.startsWith(newPath), location);
+  assert.match(location, /Not saved: the organisation name needs at least 2 characters; the service provided needs at least 2 characters; the consultancy relationship owner needs at least 2 characters; the provider contact email is not a valid address\./);
+  assert.doesNotMatch(location, /business owner/);
+  const db = new Database(dbPath);
+  try {
+    assert.equal(db.prepare(`SELECT COUNT(*) AS count FROM suppliers WHERE workspace_id=? AND name='q'`).get(activeWorkspaceId).count, 0);
+  } finally { db.close(); }
+});
+
 test('third-party intake atomically creates its legal entity and primary service relationship', async () => {
   const newPath = `/workspaces/${activeWorkspaceId}/tprm/third-parties/new`;
   const page = await client.get(newPath);

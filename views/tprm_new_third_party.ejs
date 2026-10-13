@@ -6,10 +6,10 @@
   <input type="hidden" name="_csrf" value="<%= csrfToken %>">
   <div class="tprm-section-head"><div><div class="tprm-kicker">Required record</div><h2>Organisation and service</h2><p>Create one clear service relationship. Additional services can be added separately.</p></div></div>
   <div class="tprm-section-body"><div class="form-grid">
-    <label class="form-field"><span>Third-party organisation name *</span><input class="input" name="name" required maxlength="200" autocomplete="organization"><small>Use the client-recognized name. Confirm legal identity in the relationship record.</small></label>
-    <label class="form-field"><span>Service provided *</span><input class="input" name="service_provided" required maxlength="500" placeholder="Payroll processing platform"></label>
-    <label class="form-field"><span>Business owner *</span><input class="input" name="business_owner" required maxlength="160"></label>
-    <label class="form-field"><span>Consultancy relationship owner *</span><input class="input" name="relationship_owner" required maxlength="160"></label>
+    <label class="form-field"><span>Third-party organisation name *</span><input class="input" name="name" required minlength="2" maxlength="200" autocomplete="organization"><small>Use the client-recognized name. Confirm legal identity in the relationship record.</small></label>
+    <label class="form-field"><span>Service provided *</span><input class="input" name="service_provided" required minlength="2" maxlength="500" placeholder="Payroll processing platform"></label>
+    <label class="form-field"><span>Business owner *</span><input class="input" name="business_owner" required minlength="2" maxlength="160"></label>
+    <label class="form-field"><span>Consultancy relationship owner *</span><input class="input" name="relationship_owner" required minlength="2" maxlength="160"></label>
     <label class="form-field"><span>Security reviewer</span><input class="input" name="security_reviewer" maxlength="160"></label>
     <label class="form-field"><span>Provider contact email</span><input class="input" type="email" name="contact" maxlength="254" autocomplete="email"></label>
     <label class="form-field"><span>Business criticality</span><select class="select" name="business_criticality"><option value="medium">Medium</option><option value="critical">Critical</option><option value="high">High</option><option value="low">Low</option></select></label>
