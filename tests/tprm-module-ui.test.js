@@ -325,7 +325,23 @@ test('governed cycle, maker-checker recommendation and evidence disclosure run e
   assert.match(page.text, /Draft, independent review and issue/);
   const draftAction = `${detailPath}/recommendation-drafts`;
   const draftForm = formFor(page.text, draftAction);
+  // The assessment suggests a residual risk; choosing another band needs a reason.
+  const suggested = page.text.match(/Suggested residual risk: (\w+) \((\d+)\)/);
+  assert.ok(suggested, 'the form shows the residual risk the assessment suggests');
+  const suggestedBand = suggested[1].toLowerCase();
+  assert.match(draftForm, new RegExp(`<option value="${suggestedBand}" selected>`), 'and fills the band with it');
+  const refused = await authorClient.post(draftAction, {
+    cycle_id: hiddenValue(draftForm, 'cycle_id'),
+    expected_cycle_row_version: hiddenValue(draftForm, 'expected_cycle_row_version'),
+    idempotency_key: hiddenValue(draftForm, 'idempotency_key'),
+    outcome: 'do_not_recommend', residual_risk_band: suggestedBand === 'critical' ? 'low' : 'critical',
+    executive_summary: 'Trying a band other than the suggested one without a reason.',
+    rationale: 'This draft should be refused because it gives no reason for its band.',
+  });
+  assert.equal(refused.status, 303);
+  assert.match(decodeURIComponent(String(refused.headers.location || '')), /Say why you chose/);
   const drafted = await authorClient.post(draftAction, {
+    residual_override_reason: 'Moderate reflects the compensating controls verified in the walkthrough.',
     cycle_id: hiddenValue(draftForm, 'cycle_id'),
     expected_cycle_row_version: hiddenValue(draftForm, 'expected_cycle_row_version'),
     idempotency_key: hiddenValue(draftForm, 'idempotency_key'),
@@ -343,6 +359,9 @@ test('governed cycle, maker-checker recommendation and evidence disclosure run e
     WHERE workspace_id=? AND supplier_id=? AND status='draft'`).get(activeWorkspaceId, thirdPartyId);
   assert.ok(draft);
   assert.equal(draft.author_id, recommendationAuthorId);
+  const savedRationale = workflowDb.prepare('SELECT rationale FROM tprm_recommendation_draft_revisions WHERE draft_id=? ORDER BY revision_number DESC LIMIT 1').get(draft.id).rationale;
+  if (suggestedBand === 'moderate') assert.doesNotMatch(savedRationale, /^Residual risk:/, 'no reason is kept when the band matches');
+  else assert.match(savedRationale, new RegExp(`^Residual risk: Moderate chosen; the assessment suggested ${suggested[1]} \\(${suggested[2]}\\)\\. Reason: Moderate reflects the compensating controls`));
   workflowDb.close();
 
   page = await authorClient.get(detailPath);

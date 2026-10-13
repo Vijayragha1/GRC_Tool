@@ -14,6 +14,7 @@ const fts = require('../lib/fts');
 const { pageHref } = require('../lib/paginate');
 const { withToast, auditCtx } = require('../lib/http-helpers');
 const recommendationWorkflowService = require('../lib/tprm-recommendation-workflow');
+const supplierRisk = require('../lib/supplier-risk');
 
 let domainCache;
 function tprmDomain() {
@@ -650,6 +651,20 @@ function register(app, deps) {
     };
   }
 
+  // A residual-risk band other than the one the assessment suggests needs a
+  // reason, kept as the rationale's first paragraph so the revision and the
+  // recommendation issued from it carry it (lib/supplier-risk.js).
+  function revisionInputChecked(domain, workspaceId, supplierId, body) {
+    const input = recommendationRevisionInput(body);
+    const cycle = domain.currentCycle(db, workspaceId, supplierId);
+    const checked = supplierRisk.residualOverride({
+      suggestion: cycle ? domain.residualSuggestion(db, workspaceId, supplierId, cycle.id) : null,
+      band: input.residualRiskBand, rationale: input.rationale, reason: body.residual_override_reason,
+    });
+    if (checked.error) throw new domain.TprmDomainError('TPRM_RESIDUAL_OVERRIDE_REASON', checked.error, 400);
+    return { ...input, rationale: checked.rationale };
+  }
+
   function redirectDomainError(req, res, supplierId, anchor, error) {
     const known = error && (error.name === 'TprmDomainError' || String(error.code || '').startsWith('TPRM_'));
     if (!known) console.error('[tprm orchestration]', error && error.stack ? error.stack : error);
@@ -820,6 +835,8 @@ function register(app, deps) {
       ? domain.currentClientDecision(db, req.workspace.id, thirdParty.id) : null;
     const recommendationReadiness = cycle && domain && typeof domain.recommendationReadiness === 'function'
       ? domain.recommendationReadiness(db, req.workspace.id, thirdParty.id, cycle.id) : null;
+    const residualSuggestion = cycle && domain && typeof domain.residualSuggestion === 'function'
+      ? domain.residualSuggestion(db, req.workspace.id, thirdParty.id, cycle.id) : null;
     const clientOwners = clientDecisionAuthorities(req.workspace.id);
     const authority = cycle?.client_decision_authority_id ? clientOwners.find(owner => owner.id === cycle.client_decision_authority_id) || db.prepare('SELECT id,name,email FROM users WHERE id=?').get(cycle.client_decision_authority_id) : null;
     const perms = resPermissions(req);
@@ -866,7 +883,7 @@ function register(app, deps) {
       canManageEvidenceReleases, canReleaseEvidence,
       releasableEvidence: canReleaseEvidence ? releasableEvidence(req.workspace.id, thirdParty.id, cycle) : [],
       releasedEvidenceHistory,
-      recommendationReadiness,
+      recommendationReadiness, residualSuggestion,
       projectionBlockers: thirdParty.projection?.blockers || [],
       cycleNonce: crypto.randomBytes(24).toString('hex'),
       authorityNonce: crypto.randomBytes(24).toString('hex'),
@@ -965,6 +982,7 @@ function register(app, deps) {
         if (baseKey.length < 32 || baseKey.length > 128 || baseKey !== baseKey.trim()) {
           throw new domain.TprmDomainError('TPRM_IDEMPOTENCY_KEY_INVALID', 'The recommendation form token is invalid. Reload and try again.', 400);
         }
+        const revisionInput = revisionInputChecked(domain, req.workspace.id, supplier.id, req.body);
         const result = db.transaction(() => {
           const created = recommendationWorkflowService.createDraft(db, {
             workspaceId: req.workspace.id, supplierId: supplier.id, cycleId: cycle.id,
@@ -973,7 +991,7 @@ function register(app, deps) {
           return recommendationWorkflowService.saveRevision(db, {
             workspaceId: req.workspace.id, supplierId: supplier.id, draftId: created.draft.id,
             actorId: req.user.id, expectedRowVersion: 1, expectedRevisionNumber: 0,
-            ...recommendationRevisionInput(req.body),
+            ...revisionInput,
             idempotencyKey: crypto.createHash('sha256').update(`revision:${baseKey}`).digest('hex'),
           });
         }).immediate();
@@ -992,7 +1010,7 @@ function register(app, deps) {
           workspaceId: req.workspace.id, supplierId: supplier.id, draftId: req.params.draftId,
           actorId: req.user.id, expectedRowVersion: req.body.expected_row_version,
           expectedRevisionNumber: req.body.expected_revision_number,
-          ...recommendationRevisionInput(req.body), idempotencyKey: req.body.idempotency_key,
+          ...revisionInputChecked(tprmDomain(), req.workspace.id, supplier.id, req.body), idempotencyKey: req.body.idempotency_key,
         });
         if (typeof logAction === 'function') logAction(req.user.id, req.workspace.id, 'save_tprm_recommendation_revision', 'tprm_recommendation_draft', result.draft.id, { supplierId: supplier.id, revision: result.currentRevision.revision_number }, auditCtx(req));
         return res.redirect(303, withToast(`/workspaces/${req.workspace.id}/tprm/third-parties/${supplier.id}#recommendation`, `Immutable draft revision ${result.currentRevision.revision_number} saved.`, 'success'));
