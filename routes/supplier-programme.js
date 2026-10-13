@@ -680,7 +680,7 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/vendors/:id/inherent-risk', requireAuth, requireWorkspace, requirePermission('tprm.intake.manage'), (req, res) => {
     const v = supplier(req.workspace.id, req.params.id);
     const assessment = v && currentInherent(v.id);
-    if (!v || !assessment || assessment.status !== 'draft') return redirectBack(req, res, 'This assessment is locked while awaiting approval or after approval.', 'warn');
+    if (!v || !assessment || assessment.status !== 'draft') return redirectBack(req, res, 'This assessment has already been submitted.', 'warn');
     const methodology = supplierMethodologies.forAssessment(db, assessment, req.workspace.id).definition;
     const upsert = db.prepare(`INSERT INTO supplier_inherent_responses
       (assessment_id,question_id,score,response_label,comment,updated_by)
@@ -706,13 +706,28 @@ function register(app, deps) {
     const physical = supplierRisk.allowedChoice(req.body.physical_data_centre_applicability, ['yes', 'no', 'unknown'], assessment.physical_data_centre_applicability || 'unknown');
     const modules = supplierRisk.routeModules(result.answers, physical, methodology);
     const scopeResolved = physical !== 'unknown';
-    const status = req.body.action === 'submit' && result.finalisable && scopeResolved ? 'submitted' : 'draft';
-    db.prepare(`UPDATE supplier_inherent_assessments SET status=?,physical_data_centre_applicability=?,weighted_score=?,assigned_tier=?,mandatory_floors_json=?,module_applicability_json=?,unknown_count=?,submitted_at=CASE WHEN ?='submitted' THEN datetime('now') ELSE submitted_at END,updated_at=datetime('now') WHERE id=?`)
-      .run(status, physical, result.weightedScore, result.assignedTier, JSON.stringify(result.triggeredFloors), JSON.stringify(modules), result.unknownQuestionIds.length + result.unansweredQuestionIds.length + (scopeResolved ? 0 : 1), status, assessment.id);
-    logAction(req.user.id, req.workspace.id, 'update_supplier_inherent_assessment', 'supplier_inherent_assessment', assessment.id, { score: result.weightedScore, tier: result.assignedTier, finalisable: result.finalisable }, auditCtx(req));
-    const message = req.body.action === 'submit' && (!result.finalisable || !scopeResolved)
+    // A complete assessment sets the tier when it is submitted: there is no
+    // separate approval by a second person.
+    const status = req.body.action === 'submit' && result.finalisable && scopeResolved ? 'approved' : 'draft';
+    db.transaction(() => {
+      db.prepare(`UPDATE supplier_inherent_assessments SET status=?,physical_data_centre_applicability=?,weighted_score=?,assigned_tier=?,mandatory_floors_json=?,module_applicability_json=?,unknown_count=?,
+          submitted_at=CASE WHEN ?='approved' THEN datetime('now') ELSE submitted_at END,
+          approved_at=CASE WHEN ?='approved' THEN datetime('now') ELSE approved_at END,
+          approved_by=CASE WHEN ?='approved' THEN ? ELSE approved_by END,updated_at=datetime('now') WHERE id=?`)
+        .run(status, physical, result.weightedScore, result.assignedTier, JSON.stringify(result.triggeredFloors), JSON.stringify(modules), result.unknownQuestionIds.length + result.unansweredQuestionIds.length + (scopeResolved ? 0 : 1),
+          status, status, status, req.user.id, assessment.id);
+      if (status === 'approved') {
+        db.prepare(`UPDATE suppliers SET inherent_risk_score=?,tier=?,last_assessed=date('now') WHERE id=? AND workspace_id=?`).run(result.weightedScore, result.assignedTier, v.id, req.workspace.id);
+      }
+    })();
+    logAction(req.user.id, req.workspace.id, status === 'approved' ? 'approve_supplier_inherent_assessment' : 'update_supplier_inherent_assessment', 'supplier_inherent_assessment', assessment.id,
+      { score: result.weightedScore, tier: result.assignedTier, finalisable: result.finalisable, floors: result.triggeredFloors.map(floor => floor.id) }, auditCtx(req));
+    if (status === 'approved') {
+      return res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/${v.id}`, `${supplierRisk.tierLabel(result.assignedTier, methodology)} set. The required due-diligence scope is ready.`));
+    }
+    const message = req.body.action === 'submit'
       ? `Assessment saved, but ${result.unknownQuestionIds.length + result.unansweredQuestionIds.length + (scopeResolved ? 0 : 1)} input(s) must be resolved before submission.`
-      : status === 'submitted' ? 'Inherent-risk assessment submitted for approval.' : 'Inherent-risk assessment saved.';
+      : 'Inherent-risk assessment saved.';
     res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/${v.id}/inherent-risk`, message));
   });
 
@@ -720,13 +735,12 @@ function register(app, deps) {
     const v = supplier(req.workspace.id, req.params.id);
     const assessment = v && currentInherent(v.id);
     if (!v || !assessment || assessment.status !== 'submitted') return redirectBack(req, res, 'Submit a complete assessment before approval.', 'warn');
-    if (Number(assessment.created_by) === Number(req.user.id)) {
-      return res.status(409).render('error', { user:req.user, ws:req.workspace,
-        message:'The person who prepared this inherent-risk assessment cannot approve its tier. Ask a different authorised reviewer.' });
-    }
+    // Only assessments submitted before submission set the tier reach this
+    // route. Whoever submitted one can confirm it; a reason is needed only to
+    // send it back.
     const methodology = supplierMethodologies.forAssessment(db, assessment, req.workspace.id).definition;
-    const rationale = String(req.body.approval_rationale || '').trim();
-    if (!rationale) return redirectBack(req, res, 'Approval or return rationale is required.', 'warn');
+    const rationale = String(req.body.approval_rationale || '').trim() || null;
+    if (req.body.action === 'return' && !rationale) return redirectBack(req, res, 'Say what must be corrected before returning the assessment.', 'warn');
     if (req.body.action === 'return') {
       db.prepare(`UPDATE supplier_inherent_assessments SET status='draft',submitted_at=NULL,updated_at=datetime('now') WHERE id=?`).run(assessment.id);
       logAction(req.user.id, req.workspace.id, 'return_supplier_inherent_assessment', 'supplier_inherent_assessment', assessment.id, { rationale }, auditCtx(req));
@@ -741,7 +755,7 @@ function register(app, deps) {
       db.prepare(`UPDATE suppliers SET inherent_risk_score=?,tier=?,last_assessed=date('now') WHERE id=? AND workspace_id=?`).run(result.weightedScore, result.assignedTier, v.id, req.workspace.id);
     })();
     logAction(req.user.id, req.workspace.id, 'approve_supplier_inherent_assessment', 'supplier_inherent_assessment', assessment.id, { score: result.weightedScore, tier: result.assignedTier, floors: result.triggeredFloors.map(floor => floor.id) }, auditCtx(req));
-    res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/${v.id}`, `${supplierRisk.tierLabel(result.assignedTier, methodology)} approved. The required due-diligence scope is ready.`));
+    res.redirect(withToast(`/workspaces/${req.workspace.id}/vendors/${v.id}`, `${supplierRisk.tierLabel(result.assignedTier, methodology)} set. The required due-diligence scope is ready.`));
   });
 
   app.post('/workspaces/:wsId/vendors/:id/due-diligence/start', requireAuth, requireWorkspace, requirePermission('tprm.assessment.manage'), (req, res) => {

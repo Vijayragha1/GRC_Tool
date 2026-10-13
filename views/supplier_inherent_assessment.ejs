@@ -74,15 +74,15 @@
       <div class="panel-pad"><select class="select" name="physical_data_centre_applicability" required <%= locked ? 'disabled' : '' %>><option value="unknown" <%= assessment.physical_data_centre_applicability==='unknown'?'selected':'' %>>Unknown / Validation Required</option><option value="yes" <%= assessment.physical_data_centre_applicability==='yes'?'selected':'' %>>Yes · client data is processed/stored at a vendor facility or vendor personnel access one</option><option value="no" <%= assessment.physical_data_centre_applicability==='no'?'selected':'' %>>No</option></select></div>
     </div>
 
-    <% if (!locked) { %><div class="row" style="margin-bottom:20px"><button class="btn btn-secondary" name="action" value="save">Save draft</button><button class="btn btn-primary" name="action" value="submit">Submit for approval</button></div><% } %>
+    <% if (!locked) { %><div class="row" style="margin-bottom:20px"><button class="btn btn-secondary" name="action" value="save">Save draft</button><button class="btn btn-primary" name="action" value="submit">Submit and set the tier</button></div><% } %>
   </form>
 
   <% if (!retainedReadOnly && assessment.status === 'submitted') { %>
     <div class="panel" style="max-width:760px">
-      <div class="panel-head"><h2>Approve calculated scope</h2><span class="meta">Requires supplier approval permission</span></div>
+      <div class="panel-head"><h2>Confirm the calculated tier</h2><span class="meta">Submitted before tiers were set on submission</span></div>
       <form method="POST" action="/workspaces/<%= ws.id %>/vendors/<%= v.id %>/inherent-risk/approve" class="panel-pad">
-        <label class="label">Approval or return rationale</label><textarea class="textarea" name="approval_rationale" rows="3" required placeholder="Confirm the business context, source owners, any mandatory floor and why the resulting DDQ scope is appropriate-or explain what must be corrected."></textarea>
-        <div class="row" style="margin-top:10px"><button class="btn btn-secondary" name="action" value="return">Return for changes</button><button class="btn btn-primary" name="action" value="approve">Approve <%= result ? tierLabel(result.assignedTier) : 'tier' %></button></div>
+        <label class="label">Note (needed only to return it for changes)</label><textarea class="textarea" name="approval_rationale" rows="3" placeholder="What must be corrected, if you return it"></textarea>
+        <div class="row" style="margin-top:10px"><button class="btn btn-secondary" name="action" value="return">Return for changes</button><button class="btn btn-primary" name="action" value="approve">Confirm <%= result ? tierLabel(result.assignedTier) : 'tier' %></button></div>
       </form>
     </div>
   <% } %>

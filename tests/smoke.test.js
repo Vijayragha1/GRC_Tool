@@ -323,13 +323,9 @@ function stopServer() {
     for (let i = 1; i <= 25; i++) inherentAnswers[`score_Q${String(i).padStart(2, '0')}`] = 0;
     inherentAnswers.score_Q14 = 5;
     const submitInherent = await post(`/workspaces/${wsId}/vendors/${supplierId}/inherent-risk`, inherentAnswers);
-    ok('complete inherent assessment submits', submitInherent.status >= 300 && submitInherent.status < 400, `got ${submitInherent.status}`);
-    const reviewerLogin = await loginAs(REVIEWER_EMAIL, REVIEWER_PASSWORD);
-    ok('independent consultancy reviewer signs in', reviewerLogin.status >= 300 && reviewerLogin.status < 400, `got ${reviewerLogin.status}`);
-    const approveInherent = await post(`/workspaces/${wsId}/vendors/${supplierId}/inherent-risk/approve`, { approval_rationale: 'Validated with the accountable service, technology and privacy owners.' });
-    ok('mandatory floor tier is approved', approveInherent.status >= 300 && approveInherent.status < 400, `got ${approveInherent.status}`);
-    const operatorLogin = await loginAs(TEST_EMAIL, TEST_PASSWORD);
-    ok('assessment operator resumes after independent tier approval', operatorLogin.status >= 300 && operatorLogin.status < 400, `got ${operatorLogin.status}`);
+    ok('a complete inherent assessment sets the tier when submitted, with no separate approval',
+      submitInherent.status >= 300 && submitInherent.status < 400 && new RegExp(`/vendors/${supplierId}(\\?|$)`).test(submitInherent.headers.location || ''),
+      `got ${submitInherent.status} ${submitInherent.headers.location || ''}`);
     const supplierRecord = await get(`/workspaces/${wsId}/tprm/third-parties/${supplierId}`);
     ok('canonical third-party control tower renders the approved tier',
       supplierRecord.status === 200 && /Approved tier[\s\S]*Tier 1/.test(supplierRecord.body),

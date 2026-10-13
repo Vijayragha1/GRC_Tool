@@ -293,7 +293,7 @@ function register(app, deps) {
       return { label: 'Complete inherent-risk assessment', href: `${root}/vendors/${row.id}/inherent-risk`, owner: row.relationship_owner || 'Consultancy', waitingOn: 'Consultancy', priority: 'high', rank: 10 };
     }
     if (row.inherent_status === 'submitted') {
-      return { label: 'Approve inherent-risk tier', href: `${root}/vendors/${row.id}/inherent-risk`, owner: row.security_reviewer || 'Senior consultant', waitingOn: 'Quality review', priority: 'high', rank: 12 };
+      return { label: 'Confirm the inherent-risk tier', href: `${root}/vendors/${row.id}/inherent-risk`, owner: row.relationship_owner || 'Consultancy', waitingOn: 'consultancy', priority: 'high', rank: 12 };
     }
     if (row.inherent_status !== 'approved') {
       return { label: 'Resolve inherent-risk assessment', href: `${root}/vendors/${row.id}/inherent-risk`, owner: row.relationship_owner || 'Consultancy', waitingOn: 'Consultancy', priority: 'high', rank: 11 };
