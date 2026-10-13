@@ -228,7 +228,7 @@ function register(app, deps) {
     const vcisoRequested = String(req.body.vciso_enabled || '') === '1';
     const tprmRequested = String(req.body.tprm_enabled || '') === '1';
     const tprmServiceModel = String(req.body.tprm_service_model || '').trim();
-    if (tprmRequested && !tprmDomain.SERVICE_MODELS.includes(tprmServiceModel)) {
+    if (tprmRequested && !tprmDomain.OFFERED_SERVICE_MODELS.includes(tprmServiceModel)) {
       return renderNewWorkspace(res, req.user, req.body,
         'Choose how the Third-party risk service will be delivered.', 400);
     }
@@ -618,7 +618,7 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/modules/tprm', requireAuth, requireWorkspace,
     requirePermission('tprm.methodology.manage'), (req, res) => {
       const serviceModel = String(req.body.service_model || '').trim();
-      if (!tprmDomain.SERVICE_MODELS.includes(serviceModel)) {
+      if (!tprmDomain.OFFERED_SERVICE_MODELS.includes(serviceModel)) {
         return res.status(400).render('error', {
           user:req.user, ws:req.workspace,
           message:'Choose a valid Third-party risk service model before enabling the module.'

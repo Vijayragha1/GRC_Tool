@@ -156,7 +156,6 @@
           <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
           <div class="client-setup-module-options" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;">
             <% [['assessment_only', 'One-off assessment', 'Assess selected third parties and issue recommendations.'],
-                ['programme_setup', 'Programme setup', 'Establish inventory, methodology and governance.'],
                 ['managed_lifecycle', 'Managed lifecycle', 'Run the provider lifecycle on the client\'s behalf.']].forEach(option => { %>
               <label class="panel-pad" style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;border:1px solid var(--border);border-radius:7px;">
                 <input type="radio" name="service_model" value="<%= option[0] %>" required style="margin-top:3px;">

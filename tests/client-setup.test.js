@@ -134,7 +134,7 @@ test('modules alone do not make a client look scoped', async () => {
     frameworks: ['iso27001', 'csf'],
     engagement_outcome: 'certification_support',
     tprm_enabled: '1',
-    tprm_service_model: 'programme_setup',
+    tprm_service_model: 'assessment_only',
   });
   const id = created(res.location);
   const ws = workspace(id);

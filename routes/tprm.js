@@ -341,7 +341,7 @@ function register(app, deps) {
     if (!action) return fallback;
     const root = `/workspaces/${row.workspace_id}`;
     const canonicalHrefs = {
-      classify_module: `${root}/tprm/settings`, enable_module: `${root}/tprm/settings`,
+      classify_module: `${root}/tprm/settings`, enable_module: `${root}/tprm/settings`, change_service_model: `${root}/tprm/settings`,
       start_assessment: `${root}/tprm/third-parties/${row.id}#cycle-governance`,
       start_reassessment: `${root}/tprm/third-parties/${row.id}#cycle-governance`,
       issue_recommendation: `${root}/tprm/third-parties/${row.id}#recommendation`,
@@ -827,6 +827,11 @@ function register(app, deps) {
     const moduleActive = policy.active;
     const canStartCycle = moduleActive && policy.capabilities[serviceCapabilities.CAPABILITIES.BOUNDED_ASSESSMENT].allowed
       && req.user.user_type === 'firm' && rbac.hasPermission(perms, 'tprm.intake.manage');
+    // Why a cycle cannot start: the service period first, then the user.
+    const cycleBlocked = canStartCycle ? null
+      : !moduleActive || !policy.capabilities[serviceCapabilities.CAPABILITIES.BOUNDED_ASSESSMENT].allowed
+        ? serviceCapabilities.denialReason(moduleState(req.workspace.id).row || null, serviceCapabilities.CAPABILITIES.BOUNDED_ASSESSMENT)
+        : 'Starting an assessment cycle needs a consultancy team member with third-party intake permission.';
     const canAssignAuthority = moduleActive && policy.capabilities[serviceCapabilities.CAPABILITIES.BOUNDED_ASSESSMENT].allowed
       && req.user.user_type === 'firm' && rbac.hasPermission(perms, 'tprm.assessment.manage');
     const canDraftRecommendation = moduleActive && policy.capabilities[serviceCapabilities.CAPABILITIES.RECOMMENDATION].allowed
@@ -856,7 +861,7 @@ function register(app, deps) {
       governedRecommendations, clientDecisions, governedConditions, cycle, currentRecommendation, currentClientDecision,
       serviceRelationships, cycleRelationshipScopes,
       clientOwners, authority, recommendationReviewers: recommendationReviewers(req),
-      recommendationWorkflow, canStartCycle, canAssignAuthority, canDraftRecommendation,
+      recommendationWorkflow, canStartCycle, cycleBlocked, canAssignAuthority, canDraftRecommendation,
       canIssueRecommendation, canViewEvidenceReleases,
       canManageEvidenceReleases, canReleaseEvidence,
       releasableEvidence: canReleaseEvidence ? releasableEvidence(req.workspace.id, thirdParty.id, cycle) : [],
