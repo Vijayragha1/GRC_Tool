@@ -71,8 +71,8 @@
   </div>
   <% if (typeof canEnableTprm !== 'undefined' && canEnableTprm) { %>
   <form method="POST" action="/workspaces/<%= ws.id %>/modules/tprm" style="margin-top:18px;">
-    <div class="unassigned-option-grid" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;">
-      <% [['assessment_only','One-off assessment','Assess selected third parties and issue recommendations.'],['programme_setup','Programme setup','Establish inventory, methodology and governance.'],['managed_lifecycle','Managed lifecycle','Operate onboarding through monitoring and offboarding.']].forEach(option => { %>
+    <div class="unassigned-option-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
+      <% [['assessment_only','One-off assessment','Assess selected third parties and issue recommendations.'],['managed_lifecycle','Managed lifecycle','Operate onboarding through monitoring and offboarding.']].forEach(option => { %>
         <label class="panel-pad" style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;border:1px solid var(--border);border-radius:8px;"><input type="radio" name="service_model" value="<%= option[0] %>" required style="margin-top:3px;"><span><strong style="display:block;"><%= option[1] %></strong><span class="meta" style="display:block;line-height:1.4;"><%= option[2] %></span></span></label>
       <% }) %>
     </div>

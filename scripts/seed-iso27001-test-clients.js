@@ -1275,12 +1275,12 @@ function seedImplementationOperations(workspaceId, managerId, reviewerId, client
   const tprmModule = tprmDomain.enableModule(db, {
     workspaceId,
     actorId: managerId,
-    serviceModel: 'programme_setup',
-    reason: 'Synthetic programme setup covers governed inventory, methodology and draft intake only; assessment and approval are explicitly out of scope.',
-    idempotencyKey: sha(`iso27001-seed:${workspaceId}:tprm-programme-setup`),
+    serviceModel: 'assessment_only',
+    reason: 'Synthetic one-off assessment service: suppliers start at intake and are assessed through recommendation and client decision.',
+    idempotencyKey: sha(`iso27001-seed:${workspaceId}:tprm-assessment-only`),
   }).module;
   assert.equal(tprmModule.status, 'active');
-  assert.equal(tprmModule.service_model, 'programme_setup');
+  assert.equal(tprmModule.service_model, 'assessment_only');
 
   const standardSupplierClauses = [
     ['confidentiality', 'Confidentiality / non-disclosure'],
@@ -1760,8 +1760,8 @@ function assertLifecycleChronology(result) {
   'Supplier intake record uses unsupported UI/domain vocabulary.', workspaceId);
   if (scenario.key === 'implementation') {
     assert.equal(scalar(`SELECT COUNT(*) c FROM tprm_modules
-      WHERE workspace_id=? AND service_model='programme_setup' AND status='active'`, workspaceId), 1,
-    'Implementation client must have one active programme-setup TPRM service period.');
+      WHERE workspace_id=? AND service_model='assessment_only' AND status='active'`, workspaceId), 1,
+    'Implementation client must have one active assessment-only TPRM service period.');
     assert.equal(scalar(`SELECT COUNT(*) c FROM suppliers s JOIN entities e ON e.id=s.entity_id
       WHERE s.workspace_id=? AND e.workspace_id=s.workspace_id AND e.entity_type='supplier'`, workspaceId), 4,
     'Every supplier must retain its canonical generic entity projection.');

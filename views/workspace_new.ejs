@@ -82,8 +82,8 @@
       <label class="panel-pad" style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;margin-top:7px;"><input id="vciso-module" type="checkbox" name="vciso_enabled" value="1" <%= vcisoEnabled?'checked':'' %> style="margin-top:3px;"><span><strong>vCISO advisory</strong><span class="meta" style="display:block;line-height:1.4;">Virtual security leadership, governance cadence, risk oversight, executive reporting and tracked advisory delivery.</span></span></label>
       <fieldset id="tprm-service-fieldset" <%= tprmEnabled?'':'hidden' %> style="border:1px solid var(--border);border-radius:8px;padding:12px;margin:10px 0 0;">
         <legend class="label" style="padding:0 5px;">TPRM service model <span class="meta">required</span></legend>
-        <div class="client-create-options" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;">
-          <% [['assessment_only','One-off assessment','Assess selected third parties and issue recommendations.'],['programme_setup','Programme setup','Establish inventory, methodology and governance.'],['managed_lifecycle','Managed lifecycle','Operate onboarding through monitoring and offboarding.']].forEach(option => { %>
+        <div class="client-create-options" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;">
+          <% [['assessment_only','One-off assessment','Assess selected third parties and issue recommendations.'],['managed_lifecycle','Managed lifecycle','Operate onboarding through monitoring and offboarding.']].forEach(option => { %>
             <label class="panel-pad" style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;"><input type="radio" name="tprm_service_model" value="<%= option[0] %>" <%= selectedTprmService===option[0]?'checked':'' %> <%= tprmEnabled?'required':'' %> style="margin-top:3px;"><span><strong style="display:block;"><%= option[1] %></strong><span class="meta" style="display:block;line-height:1.4;"><%= option[2] %></span></span></label>
           <% }) %>
         </div>

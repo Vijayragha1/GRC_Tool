@@ -807,15 +807,20 @@ function register(app, deps) {
     const allowedCriticality = new Set(['low', 'medium', 'high', 'critical']);
     const allowedDataAccess = new Set(['none', 'metadata', 'confidential', 'personal', 'sensitive']);
     const allowedDependency = new Set(['multi_source', 'single_source']);
-    if (intake.name.length < 2 || intake.name.length > 200
-      || intake.service.length < 2 || intake.service.length > 500
-      || intake.businessOwner.length < 2 || intake.businessOwner.length > 160
-      || intake.relationshipOwner.length < 2 || intake.relationshipOwner.length > 160
-      || !validEmail || !allowedCriticality.has(business_criticality || 'medium')
-      || !allowedDataAccess.has(data_access || 'none')
-      || !allowedDependency.has(dependency_type || 'multi_source')) {
-      return res.status(400).render('error', { user:req.user, ws:req.workspace,
-        message:'Complete the third-party name, scoped service and both accountable owners using valid intake values.' });
+    // Say which field is wrong and go back to the form, rather than ending on
+    // an error page.
+    const problems = [
+      ...[['the organisation name', intake.name, 200], ['the service provided', intake.service, 500],
+        ['the business owner', intake.businessOwner, 160], ['the consultancy relationship owner', intake.relationshipOwner, 160]]
+        .filter(([, value, max]) => value.length < 2 || value.length > max)
+        .map(([label, value, max]) => `${label} needs ${value.length > max ? `at most ${max}` : 'at least 2'} characters`),
+      ...(validEmail ? [] : ['the provider contact email is not a valid address']),
+      ...(!allowedCriticality.has(business_criticality || 'medium') || !allowedDataAccess.has(data_access || 'none')
+        || !allowedDependency.has(dependency_type || 'multi_source') ? ['choose the criticality, data access and dependency from the lists'] : []),
+    ];
+    if (problems.length) {
+      const message = `Not saved: ${problems.join('; ')}.`;
+      return res.redirect(303, withToast(`/workspaces/${req.workspace.id}/tprm/third-parties/new`, message.charAt(0).toUpperCase() + message.slice(1), 'error'));
     }
     const existing = db.prepare(`SELECT id FROM suppliers WHERE workspace_id=? AND archived_at IS NULL
       AND lower(trim(name))=lower(?) ORDER BY id LIMIT 1`).get(req.workspace.id, intake.name);

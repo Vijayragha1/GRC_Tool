@@ -72,6 +72,11 @@ test('DDQ row status enforces N/A, evidence, review and finding gates', () => {
   assert.equal(risk.evaluateDdqResponse(question, {}), 'Unanswered');
   assert.equal(risk.evaluateDdqResponse(question, { response: 'Not Applicable' }), 'N/A justification required');
   assert.equal(risk.evaluateDdqResponse(question, { response: 'Not Applicable', detail: 'Service does not process client data.' }), 'N/A - Review');
+  assert.equal(question.evidenceMandatory, true, 'the question requires evidence when it applies');
+  assert.equal(risk.evaluateDdqResponse(question, { response: 'Not Applicable', detail: 'Service does not process client data.', reviewer_conclusion: 'Not Applicable' }), 'Response Complete',
+    'an N/A the reviewer confirms is complete without evidence');
+  assert.equal(risk.evaluateDdqResponse(question, { response: 'Not Applicable', detail: 'Service does not process client data.', reviewer_conclusion: 'Unsatisfactory' }), 'N/A - Review',
+    'an N/A the reviewer does not accept stays in review');
   assert.equal(risk.evaluateDdqResponse(question, { response: 'Yes' }), 'Evidence Missing');
   const evidence = { response: 'Yes', evidence_reference: 'SOC2-CC6.1' };
   assert.equal(risk.evaluateDdqResponse(question, evidence), 'Awaiting Review');

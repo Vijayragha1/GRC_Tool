@@ -11,6 +11,16 @@
   const readiness = recommendationReadiness || null;
   const positiveGateBlockers = readiness ? readiness.blockers.filter(item => item.key !== 'findings') : [];
   const positiveDraftLocked = Boolean(readiness && !readiness.hardReady && !recommendationDraft);
+  // The residual risk the assessment suggests (lib/supplier-risk.js). It fills
+  // an empty band and score; a different band needs a reason, which the
+  // server keeps as the rationale's first paragraph.
+  const residual = typeof residualSuggestion !== 'undefined' && residualSuggestion ? residualSuggestion : null;
+  const residualPrefill = Boolean(residual && residual.available && revisionValues.residualRiskBand === 'unknown' && revisionValues.residualRiskScore == null);
+  const bandValue = residualPrefill ? residual.band : revisionValues.residualRiskBand;
+  const scoreValue = residualPrefill ? residual.score : revisionValues.residualRiskScore;
+  const overrideMatch = String(revisionValues.rationale || '').match(/^Residual risk: [^\n]*?Reason: ([^\n]*)\n\n/);
+  const rationaleText = String(revisionValues.rationale || '').replace(/^Residual risk: [^\n]*\n\n/, '');
+  const signedPoints = points => (points > 0 ? `+${points}` : String(points));
 %>
 
 <section class="tprm-section" id="recommendation">
@@ -78,13 +88,29 @@
               <option value="do_not_recommend" <%= revisionValues.outcome === 'do_not_recommend' ? 'selected' : '' %>>Do not recommend onboarding</option>
               <option value="insufficient_information" <%= revisionValues.outcome === 'insufficient_information' ? 'selected' : '' %>>Insufficient information</option>
             </select></label>
+            <% if (residual) { %>
+              <div class="tprm-callout" style="grid-column:1/-1" id="residual-suggestion">
+                <% if (residual.available) { %>
+                  <strong>Suggested residual risk: <%= titleCase(residual.band) %> (<%= residual.score %>)</strong><% if (residual.provisional) { %> · provisional until due diligence and the contract review are complete<% } %>
+                  <div class="tprm-record-list" style="margin-top:6px">
+                    <% residual.steps.forEach((step, index) => { %><div class="tprm-record-row"><span><%= step.label %></span><span><%= index === 0 ? step.points : signedPoints(step.points) %></span></div><% }) %>
+                  </div>
+                  <div style="margin-top:6px">Set the band yourself if the evidence says otherwise, and say why below.</div>
+                <% } else { %>
+                  <strong>No residual risk suggested yet.</strong> <%= residual.reason %>
+                <% } %>
+              </div>
+            <% } %>
             <label class="form-field"><span>Residual-risk band *</span><select class="select" name="residual_risk_band" required>
-              <% ['unknown','low','moderate','high','critical'].forEach(band => { %><option value="<%= band %>" <%= revisionValues.residualRiskBand === band ? 'selected' : '' %>><%= titleCase(band) %></option><% }) %>
+              <% ['unknown','low','moderate','high','critical'].forEach(band => { %><option value="<%= band %>" <%= bandValue === band ? 'selected' : '' %>><%= titleCase(band) %></option><% }) %>
             </select></label>
-            <label class="form-field"><span>Residual-risk score (0–100)</span><input class="input" type="number" name="residual_risk_score" min="0" max="100" step="1" value="<%= revisionValues.residualRiskScore == null ? '' : revisionValues.residualRiskScore %>"></label>
+            <label class="form-field"><span>Residual-risk score (0–100)</span><input class="input" type="number" name="residual_risk_score" min="0" max="100" step="1" value="<%= scoreValue == null ? '' : scoreValue %>"></label>
+            <% if (residual && residual.available) { %>
+              <label class="form-field" style="grid-column:1/-1"><span>Why the band differs from the suggestion</span><input class="input" name="residual_override_reason" maxlength="1000" value="<%= overrideMatch ? overrideMatch[1] : '' %>" placeholder="Required only when you choose a band other than <%= titleCase(residual.band) %>"></label>
+            <% } %>
             <label class="form-field"><span>Recommendation valid until</span><input class="input" type="date" name="valid_until" value="<%= revisionValues.validUntil || '' %>"></label>
             <label class="form-field" style="grid-column:1/-1"><span>Executive summary *</span><textarea class="textarea" name="executive_summary" rows="3" minlength="20" maxlength="4000" required placeholder="State the decision-relevant consultancy conclusion in plain language."><%= revisionValues.executiveSummary || '' %></textarea></label>
-            <label class="form-field" style="grid-column:1/-1"><span>Assessment rationale *</span><textarea class="textarea" name="rationale" rows="4" minlength="20" maxlength="8000" required placeholder="Explain the evidence, material findings, contract position and residual-risk conclusion."><%= revisionValues.rationale || '' %></textarea></label>
+            <label class="form-field" style="grid-column:1/-1"><span>Assessment rationale *</span><textarea class="textarea" name="rationale" rows="4" minlength="20" maxlength="8000" required placeholder="Explain the evidence, material findings, contract position and residual-risk conclusion."><%= rationaleText %></textarea></label>
           </div>
           <details class="tprm-conditions-editor" style="margin-top:14px" <%= conditionValues.some(item => item.title) ? 'open' : '' %>>
             <summary>Structured recommendation conditions <span>required for “Recommend onboarding with conditions”</span></summary>
