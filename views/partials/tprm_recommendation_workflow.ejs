@@ -93,7 +93,7 @@
                 <% if (residual.available) { %>
                   <strong>Suggested residual risk: <%= titleCase(residual.band) %> (<%= residual.score %>)</strong><% if (residual.provisional) { %> · provisional until due diligence and the contract review are complete<% } %>
                   <div class="tprm-record-list" style="margin-top:6px">
-                    <% residual.steps.forEach(step => { %><div class="tprm-record-row"><span><%= step.label %></span><span><%= signedPoints(step.points) %></span></div><% }) %>
+                    <% residual.steps.forEach((step, index) => { %><div class="tprm-record-row"><span><%= step.label %></span><span><%= index === 0 ? step.points : signedPoints(step.points) %></span></div><% }) %>
                   </div>
                   <div style="margin-top:6px">Set the band yourself if the evidence says otherwise, and say why below.</div>
                 <% } else { %>
