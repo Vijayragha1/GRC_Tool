@@ -81,12 +81,12 @@
 
     <% if (links.length) { %>
       <div class="panel">
-        <div class="panel-head"><h2>Annex A controls covered</h2><span class="meta"><%= links.length %></span></div>
+        <div class="panel-head"><h2><%= links.some(l => l.framework === 'iso42001') && !links.some(l => l.framework === 'iso27001') ? 'ISO 42001 requirements covered' : links.some(l => l.fwLabel) ? 'Requirements covered' : 'Annex A controls covered' %></h2><span class="meta"><%= links.length %></span></div>
         <div class="panel-pad" style="padding:8px 14px;">
           <% links.forEach(l => { %>
             <div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);align-items:flex-start;">
-              <span class="mono" style="font-size:11px;font-weight: 500;color:var(--accent-deep);background:var(--accent-soft);padding:2px 6px;border-radius:3px;flex-shrink:0;"><%= String(l.iso_item_id).replace('annex-a.','A.').replace('clause-','Cl. ').toUpperCase() %></span>
-              <span class="meta text-sm" style="line-height:1.45;"><%= l.title.replace(/^A\.[\d.]+\s+/, '').replace(/^Clause [\d.]+\s+/, '') %></span>
+              <span class="mono" style="font-size:11px;font-weight: 500;color:var(--accent-deep);background:var(--accent-soft);padding:2px 6px;border-radius:3px;flex-shrink:0;"><%= l.framework === 'iso42001' ? l.code : String(l.iso_item_id).replace('annex-a.','A.').replace('clause-','Cl. ').toUpperCase() %></span>
+              <span class="meta text-sm" style="line-height:1.45;"><% if (l.fwLabel) { %><%= l.fwLabel %> · <% } %><%= l.title.replace(/^A\.[\d.]+\s+/, '').replace(/^Clause [\d.]+\s+/, '').replace(/^[\d.]+\s+/, '') %></span>
             </div>
           <% }) %>
         </div>

@@ -20,7 +20,7 @@
     <div><label class="label">Cost estimate</label><input class="input" name="cost_estimate" placeholder="€"></div>
     <div><label class="label">Expected residual L</label><input class="input num" name="expected_residual_l" type="number" min="1" max="9"></div>
     <div><label class="label">Expected residual I</label><input class="input num" name="expected_residual_i" type="number" min="1" max="9"></div>
-    <div class="col-full"><label class="label">Implementing control</label><select class="select" name="iso_item_id"><option value="">- none -</option><% allControls.forEach(c => { %><option value="<%= c.id %>"><%= c.title %></option><% }) %></select></div>
+    <div class="col-full"><label class="label">Implementing control</label><%- include('partials/requirement_select', { groups: controlGroups, name: 'iso_item_id' }) %></div>
     <div class="col-full"><button class="btn btn-primary">Add action</button></div>
   </form>
 </div>
@@ -37,7 +37,7 @@
           <td>
             <strong><%= t.title %></strong>
             <% if (t.description) { %><div class="meta" style="margin-top:2px;max-width:380px;white-space:normal;"><%= t.description %></div><% } %>
-            <% if (t.iso_item_id) { %><div class="meta">→ <%= t.iso_item_id %></div><% } %>
+            <% if (t.iso_item_id) { %><div class="meta">→ <%= t.iso_title || t.iso_item_id %></div><% } %>
           </td>
           <td class="meta"><%= t.owner_name || '-' %></td>
           <td class="meta num <%= t.due_date && t.due_date < new Date().toISOString().slice(0,10) && t.status !== 'done' ? 'text-danger fw-bold' : '' %>"><%= t.due_date || '-' %></td>

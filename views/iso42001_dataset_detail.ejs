@@ -1,0 +1,103 @@
+<%- include('partials/header', { title, user, ws, active }) %>
+<%- include('partials/iso42001_audit_head') %>
+<%
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : '';
+  const d = dataset;
+  const dsBase = `${base}/datasets/${d.id}`;
+  const text = v => v || 'Not recorded';
+  const holdsPersonal = ['personal', 'sensitive'].includes(d.personal_data);
+%>
+
+<div class="a42">
+  <div class="a42-crumb"><a href="<%= base %>/datasets">Dataset register</a></div>
+  <div class="page-head">
+    <div>
+      <h1 class="page-title"><%= d.name %></h1>
+      <div class="a42-facts">
+        <span><%= d.origin || (d.source_type ? DS.SOURCE_TYPES[d.source_type] : 'Source not recorded') %></span>
+        <span><%= DS.PERSONAL[d.personal_data] %></span>
+        <% if (d.last_changed) { %><span>Changed <strong><%= fmtDate(d.last_changed) %></strong></span><% } %>
+        <% if (d.owner) { %><span>Owner <strong><%= d.owner %></strong></span><% } %>
+      </div>
+    </div>
+    <% if (perms.manage && !edit) { %><a class="btn btn-secondary" href="<%= dsBase %>?edit=1">Edit</a><% } %>
+  </div>
+
+  <% if (edit && perms.manage) { %>
+    <section class="panel">
+      <form method="POST" action="<%= dsBase %>" class="a42-form">
+        <input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="version" value="<%= d.version %>">
+        <%- include('partials/iso42001_dataset_fields', { dataset: d, DS }) %>
+        <div class="a42-form-actions">
+          <button class="btn btn-primary" type="submit">Save</button><a class="btn btn-ghost" href="<%= dsBase %>">Cancel</a>
+          <button class="btn btn-ghost text-danger" formaction="<%= dsBase %>/delete" onclick="return confirm('Remove this dataset and its links to AI systems?')">Remove dataset</button>
+        </div>
+      </form>
+    </section>
+  <% } else { %>
+    <section class="panel" aria-labelledby="dsA7Title">
+      <div class="panel-head"><div><h2 id="dsA7Title">Annex A.7 records</h2><p class="a42-caption"><strong><%= d.a7.count %> of <%= d.a7.total %></strong> recorded. The auditor samples datasets and asks for each of these.</p></div><span class="meta">Annex A.7</span></div>
+      <ul class="a42-list">
+        <% DS.A7_RECORDS.forEach(([key, label, ref]) => { const has = d.a7.has[key]; %>
+          <li>
+            <i class="a42-dot t-<%= has ? 'done' : 'open' %>" aria-hidden="true"></i>
+            <div>
+              <span class="a42-list-title"><%= label %> <span class="meta"><%= ref %></span></span>
+              <% if (key === 'acquisition') { %><p style="white-space:pre-line;"><%= text(d.acquisition) %></p>
+              <% } else if (key === 'quality') { %>
+                <p style="white-space:pre-line;"><%= d.quality_requirements ? `Must meet: ${d.quality_requirements}` : 'Quality requirements not recorded' %></p>
+                <p style="white-space:pre-line;"><%= d.quality_checked_on ? `Checked ${fmtDate(d.quality_checked_on)}: ${d.quality_result}` : 'No quality check recorded' %></p>
+              <% } else { %><p style="white-space:pre-line;"><%= text(d[key]) %></p><% } %>
+            </div>
+          </li>
+        <% }) %>
+      </ul>
+    </section>
+
+    <section class="panel" aria-labelledby="dsAboutTitle">
+      <div class="panel-head"><h2 id="dsAboutTitle">About the data</h2><span class="meta">Annex A.4.3</span></div>
+      <dl class="a42-dl" style="grid-template-columns:200px minmax(0,1fr);">
+        <dt>What it holds</dt><dd style="white-space:pre-line;"><%= text(d.description) %></dd>
+        <dt>Categories of data</dt><dd style="white-space:pre-line;"><%= text(d.data_categories) %></dd>
+        <dt>How it changes</dt><dd><%= d.refresh ? DS.REFRESH[d.refresh] : 'Not recorded' %></dd>
+        <dt>Rights to use it</dt><dd style="white-space:pre-line;"><%= text(d.data_rights) %></dd>
+        <dt>Labelling</dt><dd style="white-space:pre-line;"><%= text(d.labelling) %></dd>
+        <dt>Known or suspected bias</dt><dd style="white-space:pre-line;"><%= text(d.known_bias) %></dd>
+        <dt>Retention and disposal</dt><dd style="white-space:pre-line;"><%= text(d.retention) %></dd>
+      </dl>
+      <% if (holdsPersonal) { %>
+        <div class="a42-note">It holds <%= d.personal_data === 'sensitive' ? 'sensitive ' : '' %>personal data, so data protection law applies to how it is collected and used, including for training. In India that is the Digital Personal Data Protection Act.<% if (dpdpa) { %> <a href="/workspaces/<%= ws.id %>/dpdpa">Open the DPDPA assessment</a>.<% } %></div>
+      <% } else if (d.personal_data === 'unknown') { %>
+        <div class="a42-note">Whether it holds personal data is not yet determined.</div>
+      <% } %>
+    </section>
+  <% } %>
+
+  <section class="panel" id="uses" aria-labelledby="dsUsesTitle">
+    <div class="panel-head"><h2 id="dsUsesTitle">AI systems that use it</h2><span class="meta">Annex A.7.2</span></div>
+    <% if (!uses.length) { %>
+      <div class="a42-note">Not linked to an AI system yet, so it is not in the auditor's population.</div>
+    <% } else { %>
+      <ul class="a42-files">
+        <% uses.forEach(u => { %>
+          <li>
+            <div><a href="<%= base %>/ai-systems/<%= u.system_id %>#datasets"><%= u.system_name %></a><span class="meta"><%= DS.USES[u.use] %><%= u.in_scope ? '' : ' · system outside the AIMS scope' %></span></div>
+            <% if (perms.manage) { %><form method="POST" action="<%= base %>/ai-systems/<%= u.system_id %>/datasets/<%= d.id %>/<%= u.use %>/delete"><input type="hidden" name="_csrf" value="<%= csrf %>"><input type="hidden" name="return_to" value="dataset"><button class="btn btn-ghost btn-xs" type="submit">Unlink</button></form><% } else { %><span></span><% } %>
+          </li>
+        <% }) %>
+      </ul>
+    <% } %>
+    <% if (perms.manage && systems.length) { %>
+      <div class="a42-attach">
+        <form method="POST" action="<%= dsBase %>/systems" class="stack-grid" style="--cols:minmax(0,1fr) minmax(0,1fr) auto;--cols-sm:1fr;align-items:end;">
+          <input type="hidden" name="_csrf" value="<%= csrf %>">
+          <div><label class="label" for="dsSys">AI system</label><select id="dsSys" class="select" name="ai_system_id" required><option value="">Choose</option><% systems.forEach(s => { %><option value="<%= s.id %>"><%= s.name %></option><% }) %></select></div>
+          <div><label class="label" for="dsUse">Used for</label><select id="dsUse" class="select" name="use" required><option value="">Choose</option><% Object.entries(DS.USES).forEach(([k, l]) => { %><option value="<%= k %>"><%= l %></option><% }) %></select></div>
+          <button class="btn btn-secondary btn-xs" type="submit">Record use</button>
+        </form>
+      </div>
+    <% } %>
+  </section>
+</div>
+
+<%- include('partials/footer') %>

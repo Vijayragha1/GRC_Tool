@@ -1,0 +1,14 @@
+<%# A requirement picker for the screens every framework shares: each
+    requirement of the client's frameworks, grouped by framework when there is
+    more than one. Takes groups (lib/requirement-options grouped()), name, and
+    optionally selected, blank, cls, style and short (show the reference
+    only). %>
+<% const reqGroups = locals.groups || []; %>
+<select class="<%= locals.cls || 'select' %>" name="<%= locals.name || 'iso_item_id' %>"<% if (locals.style) { %> style="<%= locals.style %>"<% } %>>
+  <option value=""><%= locals.blank || '- none -' %></option>
+  <% reqGroups.forEach(g => { %>
+    <% if (reqGroups.length > 1) { %><optgroup label="<%= g.label %>"><% } %>
+    <% g.items.forEach(it => { %><option value="<%= it.id %>" <%= locals.selected === it.id ? 'selected' : '' %>><%= locals.short ? it.code : it.title %></option><% }) %>
+    <% if (reqGroups.length > 1) { %></optgroup><% } %>
+  <% }) %>
+</select>

@@ -330,10 +330,18 @@ test('AUTHZ-005/006 - evidence, internal exports and platform operations fail cl
     `/workspaces/${ids.workspaceId}/csf/999999/exports/data.csv`,
     `/workspaces/${ids.workspaceId}/dpdpa/assessments/999999/exports/data.csv`,
   ];
+  // ISO 42001 pages exist only for a client with that programme, so the
+  // boundary client takes ISO 42001 as well while its exports are checked:
+  // the ISO 42001 export must then refuse on the permission, not the programme.
+  const programmes = (frameworks) => { const conn = new Database(dbPath); conn.prepare('UPDATE workspaces SET frameworks=? WHERE id=?').run(frameworks, ids.workspaceId); conn.close(); };
+  programmes('["iso27001","iso42001"]');
   for (const route of internalExports) {
     const denied = await consultant.get(route);
     assert.equal(denied.status, 403, `${route} must require workspace.export`);
   }
+  programmes('["iso27001"]');
+  assert.equal((await consultant.get(`/workspaces/${ids.workspaceId}/iso42001/export/soa.csv`)).status, 404,
+    'without the programme the ISO 42001 export does not exist');
   assert.equal((await consultant.post(`/workspaces/${ids.workspaceId}/audit-pack/pdf`, {})).status, 403);
 
   const before = new Database(dbPath);

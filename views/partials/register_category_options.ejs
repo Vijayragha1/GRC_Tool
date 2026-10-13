@@ -1,0 +1,14 @@
+<%#
+  Category options for the incident and change registers, grouped when the
+  client runs ISO 42001 (lib/aims-operations.js). A stored value no longer
+  offered is kept as an option, so editing never changes it silently.
+%>
+<% const chosen = typeof selected !== 'undefined' ? selected : 'other';
+   const offered = new Set(groups.flatMap(g => g.options.map(([v]) => v)).concat('other')); %>
+<% if (chosen && !offered.has(chosen)) { %><option value="<%= chosen %>" selected><%= chosen.replace(/_/g, ' ') %></option><% } %>
+<% groups.forEach(g => { %>
+  <% if (g.label) { %><optgroup label="<%= g.label %>"><% } %>
+  <% g.options.forEach(([value, text]) => { %><option value="<%= value %>" <%= chosen === value ? 'selected' : '' %>><%= text %></option><% }) %>
+  <% if (g.label) { %></optgroup><% } %>
+<% }) %>
+<option value="other" <%= chosen === 'other' ? 'selected' : '' %>>Other</option>

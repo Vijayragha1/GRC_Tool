@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Read and acknowledge</title>
+  <link rel="stylesheet" href="/app.css">
+  <style>
+    body { background: var(--bg, #fbfbf8); }
+    .ack-wrap { max-width: 820px; margin: 0 auto; padding: 32px 16px 48px; }
+    .ack-doc { background: #fff; border: 1px solid var(--border, #ecebe5); border-radius: 8px; padding: 24px; margin: 16px 0; line-height: 1.6; }
+    .ack-bar { position: sticky; bottom: 0; background: var(--bg, #fbfbf8); padding: 14px 0; border-top: 1px solid var(--border, #ecebe5); }
+  </style>
+</head>
+<body>
+  <main class="ack-wrap">
+    <% if (state === 'invalid') { %>
+      <h1 class="page-title">This link is not valid</h1>
+      <p class="meta">It may have been replaced by a newer link. Ask the person who sent it for a new one.</p>
+    <% } else { const org = found.workspace.brand_display_name || found.workspace.client_name; %>
+      <div class="eyebrow"><%= org %></div>
+      <h1 class="page-title"><%= found.version.name %> <span class="meta">version <%= found.version.version %></span></h1>
+      <% if (state === 'done') { %>
+        <p class="text-lg"><strong>Thank you, <%= found.recipient.recipient_name %>.</strong> You acknowledged this document on <%= String(found.recipient.acknowledged_at).slice(0, 10) %>.</p>
+      <% } else if (state === 'closed') { %>
+        <p class="text-lg">This acknowledgement has been closed. Contact <%= org %> if you still need to confirm it.</p>
+      <% } else { %>
+        <p class="meta">Please read the document below, then confirm at the bottom of the page<% if (found.recipient.due_date) { %> by <%= found.recipient.due_date %><% } %>.</p>
+      <% } %>
+      <article class="ack-doc"><%- html %></article>
+      <% if (state === 'open') { %>
+        <div class="ack-bar">
+          <form method="POST" action="/ack/<%= token %>">
+            <button class="btn btn-primary">I, <%= found.recipient.recipient_name %>, have read and understood this document</button>
+          </form>
+        </div>
+      <% } %>
+    <% } %>
+  </main>
+</body>
+</html>

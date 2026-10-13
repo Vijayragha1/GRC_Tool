@@ -1,0 +1,31 @@
+<%#
+  Steps of the engagement's path (lib/iso42001-journey.js), as a list. Takes
+  `steps` and, when grouped by stage, `groups` ([{ key, name, href, steps }]).
+  Each step says what to do, why, and where it stands; the next step carries
+  the one primary button.
+%>
+<%
+  const STEP_TONE = { done: 'done', next: 'wip', todo: 'open', waiting: 'open', skip: 'na' };
+  const stepState = (s) => s.status === 'done' ? 'Done'
+    : s.status === 'next' ? 'Next'
+      : s.status === 'skip' ? 'Not needed'
+        : s.status === 'waiting' ? `After step ${s.afterNumber || ''}`.trim()
+          : s.ongoing ? 'Ongoing' : 'To do';
+  const pathGroups = typeof groups !== 'undefined' && groups ? groups : [{ steps }];
+%>
+<% pathGroups.forEach(g => { %>
+  <% if (g.name) { %><h3 class="a42-list-group"><a href="<%= g.href %>"><%= g.name %></a> <span><%= g.steps.filter(s => s.status === 'done').length %> of <%= g.steps.filter(s => s.status !== 'skip').length %> done</span></h3><% } %>
+  <ul class="a42-list a42-steps">
+    <% g.steps.forEach(s => { %>
+      <li class="is-<%= s.status %>" id="step-<%= s.key %>">
+        <i class="a42-dot t-<%= s.ongoing && s.status !== 'done' ? 'gap' : STEP_TONE[s.status] %>" aria-hidden="true"></i>
+        <div>
+          <a class="a42-list-title" href="<%= s.href %>"><% if (s.number) { %><span class="a42-step-no"><%= s.number %></span><% } %><%= s.title %></a>
+          <p><%= s.why %></p>
+          <p><span class="a42-step-state"><%= stepState(s) %></span><% if (s.status === 'skip') { %> · <%= s.skip %><% } else if (s.status === 'waiting') { %> · <%= s.afterTitle %><% } else if (s.detail) { %> · <%= s.detail %><% } %><% if (s.shared) { %> · opens outside the module<% } %></p>
+        </div>
+        <% if (s.status === 'next') { %><a class="btn btn-primary btn-xs" href="<%= s.href %>">Start <span aria-hidden="true">→</span></a><% } else if (s.status !== 'skip') { %><a class="a42-list-action" href="<%= s.href %>">Open <span aria-hidden="true">→</span></a><% } else { %><span></span><% } %>
+      </li>
+    <% }) %>
+  </ul>
+<% }) %>

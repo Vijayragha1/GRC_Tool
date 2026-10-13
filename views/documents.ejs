@@ -11,6 +11,23 @@
   </div>
 </div>
 
+<% if (typeof awaitingMe !== 'undefined' && awaitingMe.length) { %>
+  <form method="POST" action="/workspaces/<%= ws.id %>/documents/bulk-approve" class="panel" style="margin-bottom:14px;">
+    <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+    <div class="panel-head">
+      <h2>Waiting for your approval (<%= awaitingMe.length %>)</h2>
+      <button class="btn btn-primary btn-xs">Approve selected</button>
+    </div>
+    <% awaitingMe.forEach(d => { %>
+      <label style="display:flex;align-items:center;gap:10px;padding:8px 16px;border-top:1px solid var(--border);<%= d.ownWork ? 'opacity:0.7;' : '' %>">
+        <input type="checkbox" name="document_ids" value="<%= d.id %>" <%= d.ownWork ? 'disabled' : '' %>>
+        <a href="/workspaces/<%= ws.id %>/documents/<%= d.id %>" class="link-muted" style="flex:1;min-width:0;"><%= d.name %> <span class="meta">v<%= d.version %></span></a>
+        <span class="meta text-sm"><%= d.ownWork ? 'You prepared this version; approve it on its own page' : `Prepared by ${d.prepared_by || 'unknown'}${d.submitted_at ? ' · submitted ' + String(d.submitted_at).slice(0, 10) : ''}` %></span>
+      </label>
+    <% }) %>
+  </form>
+<% } %>
+
 <%
   // Review-reminder banner: count overdue + due-soon at the top of the page.
   // Computed inline from the rows the route already passes through.

@@ -1,0 +1,18 @@
+<%#
+  The questions that decide the organisation's role for one AI system
+  (lib/ai-roles.js). A question left unanswered stays unanswered; the roles
+  are derived from the answers given.
+%>
+<% const qAnswers = (typeof answers !== 'undefined' && answers) || {}; const qPrefix = typeof prefix !== 'undefined' ? prefix : 'role'; %>
+<div class="a42-role-qs">
+  <% questions.forEach(q => { const v = qAnswers[q.key]; %>
+    <fieldset class="a42-role-q">
+      <legend><%= q.text %></legend>
+      <span class="hint"><%= q.hint %></span>
+      <div class="a42-checks">
+        <label><input type="radio" name="role_<%= q.key %>" value="yes" id="<%= qPrefix %>-<%= q.key %>-yes" <%= v === 'yes' ? 'checked' : '' %>> <span>Yes</span></label>
+        <label><input type="radio" name="role_<%= q.key %>" value="no" id="<%= qPrefix %>-<%= q.key %>-no" <%= v === 'no' ? 'checked' : '' %>> <span>No</span></label>
+      </div>
+    </fieldset>
+  <% }) %>
+</div>

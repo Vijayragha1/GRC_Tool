@@ -1,0 +1,63 @@
+<%#
+  Every requirement of ISO/IEC 42001 on one surface: clauses 4 to 10 as
+  columns, the nine Annex A control groups as rows. Each tile is coloured by
+  the recorded conclusion and opens that requirement's assessment.
+  Expects: mast (lib/iso42001-masthead build()), heading, intro.
+%>
+<%
+  const ringR = 34, ringC = 2 * Math.PI * ringR;
+  const next = mast.next;
+%>
+<section class="panel a42-map" aria-labelledby="a42MapTitle">
+  <div class="a42-map-head">
+    <div class="a42-ring" role="img" aria-label="<%= mast.assessed %> of <%= mast.total %> requirements concluded">
+      <svg viewBox="0 0 80 80" aria-hidden="true">
+        <circle class="a42-ring-track" cx="40" cy="40" r="<%= ringR %>"></circle>
+        <circle class="a42-ring-fill" cx="40" cy="40" r="<%= ringR %>" style="--c:<%= ringC.toFixed(2) %>;--to:<%= (ringC * (1 - mast.pct / 100)).toFixed(2) %>"></circle>
+      </svg>
+      <span><strong><%= mast.pct %></strong>%</span>
+    </div>
+    <div class="a42-map-intro">
+      <h2 id="a42MapTitle"><%= heading %></h2>
+      <p><%= intro %></p>
+    </div>
+    <% if (next) { %>
+      <a class="btn btn-primary a42-map-next" href="<%= mast.base %>/gap/<%= next.id %>">Continue with <%= next.ref %> <span aria-hidden="true">→</span></a>
+    <% } %>
+  </div>
+
+  <div class="a42-map-body">
+    <div class="a42-map-clauses" aria-label="Management system clauses 4 to 10">
+      <h3>Clauses</h3>
+      <div class="a42-map-cols">
+        <% mast.clauseGroups.forEach(g => { %>
+          <div class="a42-map-col">
+            <span class="a42-map-colhead"><b><%= g.number %></b> <%= g.name %></span>
+            <% g.items.forEach(r => { %>
+              <a class="a42-tile t-<%= r.tone %><%= next && next.id === r.id ? ' is-next' : '' %>" data-id="<%= r.id %>" href="<%= mast.base %>/gap/<%= r.id %>" title="<%= r.ref %> <%= r.title %>: <%= r.status %>"><%= r.code %></a>
+            <% }) %>
+          </div>
+        <% }) %>
+      </div>
+    </div>
+    <div class="a42-map-annex" aria-label="Annex A controls">
+      <h3>Annex A controls</h3>
+      <% mast.controlGroups.forEach(g => { %>
+        <div class="a42-map-row">
+          <span class="a42-map-rowhead"><b><%= g.ref %></b> <%= g.name %></span>
+          <div class="a42-map-tiles">
+            <% g.items.forEach(r => { %>
+              <a class="a42-tile t-<%= r.tone %><%= next && next.id === r.id ? ' is-next' : '' %>" data-id="<%= r.id %>" href="<%= mast.base %>/gap/<%= r.id %>" title="<%= r.ref %> <%= r.title %>: <%= r.status %>"><%= r.code %></a>
+            <% }) %>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+  </div>
+
+  <ul class="a42-legend" aria-label="Conclusions">
+    <% mast.legend.forEach(l => { %>
+      <li class="<%= l.count ? '' : 'is-zero' %>"><i class="a42-dot t-<%= l.tone %>" aria-hidden="true"></i><%= l.label %> <b><%= l.count %></b></li>
+    <% }) %>
+  </ul>
+</section>

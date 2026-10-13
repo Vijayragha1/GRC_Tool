@@ -487,6 +487,15 @@ function register(app, deps) {
     res.render('portfolio', { user: req.user, ws: null, active: 'portfolio', engagements, summary });
   });
 
+  // Every ISO 42001 client the user works on, on one board (lib/aims-board.js).
+  // A consultant sees their own clients; managers see the firm's.
+  app.get('/portfolio/iso42001', requireAuth, (req, res) => {
+    if (!isFirmUser(req.user)) return res.status(403).render('error', { user: req.user, message: 'The ISO 42001 board is for the firm\'s consultants.' });
+    const { shared } = require('./iso42001');
+    const data = require('../lib/aims-board').board(db, listWorkspaces(req.user), { readinessFor: shared.computeIso42001Readiness });
+    res.render('portfolio_iso42001', { user: req.user, ws: null, active: 'portfolio', ...data });
+  });
+
   // Firm-wide schedule aggregation: every dated / assignable item across ALL of a
   // firm's engagements, normalised into one list. Powers the manager calendar grid,
   // the overdue strip, the KPI counts and the per-consultant workload panel - the

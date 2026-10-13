@@ -4,7 +4,7 @@
   const portalHref = view => `/workspaces/${ws.id}/client-portal?view=${view}${previewQuery}`;
   let portalFrameworks = Array.isArray(ws.frameworks) ? ws.frameworks : [];
   if (!Array.isArray(ws.frameworks)) { try { portalFrameworks = JSON.parse(ws.frameworks || '[]'); } catch (_) { portalFrameworks = []; } }
-  const gapAssessmentOnly = portalFrameworks.includes('iso27001') && ws.engagement_outcome === 'gap_assessment_only';
+  const gapAssessmentOnly = portalFrameworks.some(code => ['iso27001', 'iso42001'].includes(code)) && ws.engagement_outcome === 'gap_assessment_only';
   const showTprmPortal = typeof tprmPortalEnabled !== 'undefined' && tprmPortalEnabled;
   const portalItems = [
     { key: 'home', label: 'Home', href: portalHref('home'), icon: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>' },

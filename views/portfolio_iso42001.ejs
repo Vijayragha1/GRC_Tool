@@ -1,0 +1,57 @@
+<%- include('partials/header', { title: 'ISO 42001 clients', user, ws: null }) %>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-title">ISO 42001 clients</h1>
+    <div class="meta text-sm" style="margin-top:2px;">Where each AI management system certification stands and what is waiting on you: open findings first, then the nearest certification body audit.</div>
+  </div>
+</div>
+
+<% if (!rows.length) { %>
+  <div class="panel"><div class="t-empty">None of your clients works to ISO 42001 yet.</div></div>
+<% } else { %>
+<div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--text-secondary);margin:0 0 16px;padding:10px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg);">
+  <span><strong style="color:var(--text);font-weight:500;font-size:14px;"><%= summary.clients %></strong> client<%= summary.clients === 1 ? '' : 's' %></span>
+  <span style="color:var(--text-tertiary);">·</span>
+  <span><strong style="color:var(--text);font-weight:500;"><%= summary.auditsIn30Days %></strong> audit<%= summary.auditsIn30Days === 1 ? '' : 's' %> in the next 30 days</span>
+  <span style="color:var(--text-tertiary);">·</span>
+  <span><strong style="color:<%= summary.overdueRequests ? '#b91c1c' : 'var(--text-secondary)' %>;font-weight:500;"><%= summary.overdueRequests %></strong> overdue auditor request<%= summary.overdueRequests === 1 ? '' : 's' %></span>
+  <span style="color:var(--text-tertiary);">·</span>
+  <span><strong style="color:<%= summary.majorFindings ? '#b91c1c' : 'var(--text-secondary)' %>;font-weight:500;"><%= summary.majorFindings %></strong> open major finding<%= summary.majorFindings === 1 ? '' : 's' %></span>
+</div>
+
+<div class="panel" style="overflow:hidden;">
+  <div style="overflow-x:auto;">
+  <table class="t">
+    <thead><tr>
+      <th>Client</th>
+      <th style="width:190px;">Next audit</th>
+      <th style="width:120px;" title="Stage 1 and Stage 2 readiness from the records">Readiness</th>
+      <th style="width:120px;">Auditor requests</th>
+      <th style="width:110px;">CB findings</th>
+      <th style="width:120px;">AI systems</th>
+      <th>Needs attention</th>
+    </tr></thead>
+    <tbody>
+      <% rows.forEach(r => { const base = `/workspaces/${r.workspace.id}/iso42001`; %>
+        <tr>
+          <td><a href="<%= base %>/overview" class="link-muted" style="font-weight:500;"><%= r.name %></a><% if (r.gapOnly) { %><div class="meta text-xs">Gap assessment only</div><% } %></td>
+          <td class="text-sm">
+            <% if (!r.next) { %><span class="meta"><%= r.gapOnly ? '-' : 'Not scheduled' %></span>
+            <% } else if (r.next.done) { %><%= r.next.label %><div class="meta text-xs">held <%= r.next.date %></div>
+            <% } else { %><a href="<%= base %>/cert-cycle" class="link-muted"><%= r.next.label %></a><div class="meta text-xs" style="<%= r.next.days < 0 ? 'color:#b91c1c;' : r.next.days <= 30 ? 'color:#b45309;' : '' %>"><%= r.next.date %> · <%= r.next.days < 0 ? `${-r.next.days} days ago, not recorded` : r.next.days === 0 ? 'today' : `in ${r.next.days} days` %></div><% } %>
+          </td>
+          <td class="num text-sm"><% if (r.readiness) { %><a href="<%= base %>/readiness" class="link-muted"><%= r.readiness.stage1 %>% · <%= r.readiness.stage2 %>%</a><% } else { %>-<% } %></td>
+          <td class="text-sm"><% if (r.gapOnly || !r.requests.total) { %><span class="meta">-</span><% } else { %><a href="<%= base %>/requests" class="link-muted"><%= r.requests.open %> open</a><% if (r.requests.overdue) { %><div class="text-xs" style="color:#b91c1c;"><%= r.requests.overdue %> overdue</div><% } %><% } %></td>
+          <td class="text-sm"><% if (r.findings.total) { %><span style="<%= r.findings.major ? 'color:#b91c1c;font-weight:500;' : '' %>"><%= r.findings.major || 0 %> major · <%= r.findings.minor || 0 %> minor</span><% } else { %><span class="meta">none open</span><% } %></td>
+          <td class="text-sm"><a href="<%= base %>/ai-systems" class="link-muted"><%= r.systems.total %> in scope</a><% if (r.systems.unassessed) { %><div class="text-xs" style="color:#b45309;"><%= r.systems.unassessed %> without an assessment</div><% } %></td>
+          <td class="text-sm"><% if (r.attention.length) { %><%= r.attention.join(' · ') %><% } else { %><span class="meta">Nothing outstanding</span><% } %></td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+  </div>
+</div>
+<% } %>
+
+<%- include('partials/footer') %>

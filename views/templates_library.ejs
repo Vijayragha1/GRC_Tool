@@ -91,6 +91,30 @@
   </div>
 </div>
 
+<% if (framework === 'iso42001' && typeof templateValues !== 'undefined') { const setCount = templateValues.filter(f => f.value).length; %>
+  <details class="panel" style="margin-bottom:14px;" <%= setCount ? '' : 'open' %>>
+    <summary class="panel-head" style="cursor:pointer;list-style:none;">
+      <h2>Names filled into the templates</h2>
+      <span class="meta"><%= setCount %> of <%= templateValues.length %> set · each replaces its [BRACKETED] placeholder in every template adopted from here</span>
+    </summary>
+    <form method="POST" action="/workspaces/<%= ws.id %>/templates/values" class="panel-pad" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;">
+      <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+      <input type="hidden" name="framework" value="<%= framework %>">
+      <% templateValues.forEach(f => { %>
+        <div>
+          <label class="label" for="tv-<%= f.key %>"><%= f.label %> <span class="mono meta text-xs"><%= f.tokens[0] %></span></label>
+          <input class="input" id="tv-<%= f.key %>" name="<%= f.key %>" value="<%= f.saved %>" placeholder="<%= f.fromRecords ? `From the records: ${f.fromRecords}` : 'Leave empty to keep the placeholder' %>" maxlength="200">
+          <div class="meta text-xs" style="margin-top:3px;"><%= f.hint %></div>
+        </div>
+      <% }) %>
+      <div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-primary btn-xs">Save</button>
+        <button class="btn btn-secondary btn-xs" name="apply_to_drafts" value="1">Save and fill into this client's drafts</button>
+      </div>
+    </form>
+  </details>
+<% } %>
+
 <% if (frameworkTabs.length > 1) { %>
   <nav class="subtabs" aria-label="Template pack">
     <% frameworkTabs.forEach(f => { %>

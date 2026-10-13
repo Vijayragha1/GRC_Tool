@@ -10,6 +10,10 @@ const fts = require('../lib/fts');
 const enc = require('../lib/encryption');
 const rbac = require('../lib/rbac');
 const ctlReads = require('../lib/control-reads');
+const reqOpts = require('../lib/requirement-options');
+const riskLinks = require('../lib/risk-control-links');
+const riskOwner = require('../lib/risk-owner');
+const { moduleReturn } = require('../lib/module-return');
 const ctlWrites = require('../lib/control-writes');
 const docLinks = require('../lib/doc-links');
 const changesSince = require('../lib/changes-since');
@@ -116,6 +120,24 @@ function register(app, deps) {
     res.json(rows);
   });
 
+  // The palette's pages for a client whose only ISO programme is ISO 42001:
+  // the module's pages, then the shared pages that serve it, without ISO
+  // 27001's control register, SoA, gap assessment, readiness and risk pages.
+  const ISO27001_PAGES = new Set(['', '/readiness', '/gap-assessment', '/roadmap', '/controls', '/assets', '/risks', '/objectives',
+    '/risk-methodology', '/risk-acceptances', '/soa', '/soa/snapshots', '/cert-cycle']);
+  const AIMS_ALIASES = {
+    '/controls': 'controls annex a clauses requirements', '/soa': 'soa statement of applicability annex a inclusion exclusion',
+    '/risks': 'risks risk register criteria methodology', '/readiness': 'stage 1 stage 2 cert ready', '/gap-assessment': 'gap pass',
+    '/ai-systems': 'ai system register inventory', '/roles': 'provider producer customer user', '/concerns': 'whistleblowing report concern',
+  };
+  function aimsNav(ws, shared) {
+    const masthead = require('../lib/iso42001-masthead');
+    const gapOnly = require('../lib/engagement-outcome-scope').isGapAssessmentOnly(ws);
+    const module = [['ISO 42001 overview', '/iso42001/overview', 'overview dashboard home programme'], ['Your path', '/iso42001/path', 'next step journey stages'],
+      ...masthead.PAGES.filter((p) => !(gapOnly && p.certification)).map((p) => [p.label, `/iso42001${p.path}`, AIMS_ALIASES[p.path] || ''])];
+    return [...module, ...shared.filter(([, path]) => !ISO27001_PAGES.has(path))];
+  }
+
   // ==================== COMMAND PALETTE SEARCH ====================
   app.get('/api/search', requireAuth, (req, res) => {
     const q = (req.query.q || '').toLowerCase().trim();
@@ -159,15 +181,19 @@ function register(app, deps) {
     if (wsId) {
       const ws = getWorkspace(wsId, req.user);
       if (ws) {
-        // ISO items (clauses + controls) - search across all
-        const items = db.prepare(`SELECT id, title, type FROM iso_items
-                                   WHERE lower(title) LIKE ? OR lower(id) LIKE ?
-                                   ORDER BY sort_order LIMIT 8`).all(like, like);
+        // Clauses and controls of the client's ISO frameworks, each opening
+        // on its own framework's page.
+        const isoCodes = reqOpts.enabledCodes(ws).filter(code => code === 'iso27001' || code === 'iso42001');
+        const items = isoCodes.length ? db.prepare(`SELECT rq.ref AS id, rq.title, rq.req_type AS type, f.code AS framework
+                                   FROM requirements rq JOIN frameworks f ON f.id = rq.framework_id
+                                   WHERE f.code IN (${isoCodes.map(() => '?').join(',')}) AND rq.req_type IN ('clause','control')
+                                     AND (lower(rq.title) LIKE ? OR lower(rq.ref) LIKE ?)
+                                   ORDER BY rq.sort_order LIMIT 8`).all(...isoCodes, like, like) : [];
         items.forEach(i => results.push({
           type: i.type === 'clause' ? 'Clause' : 'Control',
-          label: i.title,
-          sublabel: i.id.startsWith('clause') ? i.id.replace('clause-', 'Cl. ') : i.id.replace('annex-', '').toUpperCase(),
-          href: '/workspaces/' + wsId + '/controls/' + i.id
+          label: reqOpts.displayTitle(ws, i.framework, i.title),
+          sublabel: reqOpts.codeOf(i),
+          href: i.framework === 'iso42001' ? '/workspaces/' + wsId + '/iso42001/gap/' + i.id : '/workspaces/' + wsId + '/controls/' + i.id
         }));
 
         const risks = db.prepare(`SELECT id, title FROM risks WHERE workspace_id = ? AND lower(title) LIKE ? LIMIT 5`).all(wsId, like);
@@ -215,7 +241,11 @@ function register(app, deps) {
           ['Team & access', '/team', 'team members users access permissions rbac'],
           ['Activity log', '/activity-log', 'audit trail history']
         ];
-        nav.filter(([n, , aliases]) => n.toLowerCase().includes(q) || (aliases && aliases.toLowerCase().includes(q)))
+        // A client that runs ISO 42001 without ISO 27001 gets the module's
+        // pages in place of ISO 27001's (the same pages redirect there).
+        const codes = reqOpts.enabledCodes(ws);
+        const pages = codes.includes('iso42001') && !codes.includes('iso27001') ? aimsNav(ws, nav) : nav;
+        pages.filter(([n, , aliases]) => n.toLowerCase().includes(q) || (aliases && aliases.toLowerCase().includes(q)))
           .slice(0, 8)
           .forEach(([n, p]) => {
             results.push({ type: 'Page', label: n, sublabel: ws.client_name, href: '/workspaces/' + wsId + p });
@@ -339,10 +369,20 @@ function register(app, deps) {
   });
 
   // ==================== RISK METHODOLOGY ====================
+  // Each management system has its own risk method (migration 079). The page
+  // edits the one named by `standard`, or the client's primary one; the ISO
+  // 42001 module passes standard=iso42001 and a return_to inside the module.
+  const methodSystem = req => riskOwner.requested(req.workspace, (req.body && req.body.standard) || req.query.standard);
+  const methodPage = (req, system) => moduleReturn(req)
+    || `/workspaces/${req.workspace.id}/risk-methodology${riskOwner.hasBoth(req.workspace) ? `?standard=${system}` : ''}`;
+  const deactivateMethods = (wsId, system) => db.prepare(`UPDATE risk_methodologies SET is_active=0 WHERE workspace_id=? AND management_system=?`).run(wsId, system);
+
   app.get('/workspaces/:wsId/risk-methodology', requireAuth, requireWorkspace, requirePermission('risk.view'), (req, res) => {
-    const m = getActiveMethodology(req.workspace.id);
-    const all = db.prepare('SELECT id, name, description, is_active, updated_at FROM risk_methodologies WHERE workspace_id=? ORDER BY is_active DESC, name').all(req.workspace.id);
-    res.render('risk_methodology', { user: req.user, ws: req.workspace, methodology: m, all });
+    const system = methodSystem(req);
+    const m = getActiveMethodology(req.workspace.id, system);
+    const all = db.prepare('SELECT id, name, description, is_active, updated_at FROM risk_methodologies WHERE workspace_id=? AND management_system=? ORDER BY is_active DESC, name').all(req.workspace.id, system);
+    res.render('risk_methodology', { user: req.user, ws: req.workspace, methodology: m, all, standard: system,
+      bothSystems: riskOwner.hasBoth(req.workspace), returnTo: moduleReturn(req) });
   });
 
   app.post('/workspaces/:wsId/risk-methodology', requireAuth, requireWorkspace, requirePermission('risk.methodology'), (req, res) => {
@@ -364,29 +404,31 @@ function register(app, deps) {
       return res.status(400).render('error', { user: req.user, message: 'Invalid methodology: ' + e.message });
     }
 
-    const before = getActiveMethodology(req.workspace.id);
+    const system = methodSystem(req);
+    const before = getActiveMethodology(req.workspace.id, system);
     // Deactivate old, insert new active version (audit-friendly versioning)
-    db.prepare(`UPDATE risk_methodologies SET is_active=0 WHERE workspace_id=?`).run(req.workspace.id);
-    const id = db.prepare(`INSERT INTO risk_methodologies (workspace_id, name, description, likelihood_scale, impact_scale, matrix, thresholds, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 1)`).run(
+    deactivateMethods(req.workspace.id, system);
+    const id = db.prepare(`INSERT INTO risk_methodologies (workspace_id, name, description, likelihood_scale, impact_scale, matrix, thresholds, is_active, management_system)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`).run(
       req.workspace.id, name || 'Custom', description || null,
-      JSON.stringify(lScale), JSON.stringify(iScale), JSON.stringify(mat), JSON.stringify(thr)
+      JSON.stringify(lScale), JSON.stringify(iScale), JSON.stringify(mat), JSON.stringify(thr), system
     ).lastInsertRowid;
     logAction(req.user.id, req.workspace.id, 'update_risk_methodology', 'methodology', id,
-      { name }, { ...auditCtx(req), before: { id: before.id, name: before.name }, after: { id, name } });
-    res.redirect(withToast('/workspaces/' + req.workspace.id + '/risk-methodology', 'Methodology updated'));
+      { name, management_system: system }, { ...auditCtx(req), before: { id: before.id, name: before.name }, after: { id, name } });
+    res.redirect(withToast(methodPage(req, system), 'Methodology updated'));
   });
 
   app.post('/workspaces/:wsId/risk-methodology/reset', requireAuth, requireWorkspace, requirePermission('risk.methodology'), (req, res) => {
-    db.prepare(`UPDATE risk_methodologies SET is_active=0 WHERE workspace_id=?`).run(req.workspace.id);
+    const system = methodSystem(req);
+    deactivateMethods(req.workspace.id, system);
     const m = defaultMethodology();
-    db.prepare(`INSERT INTO risk_methodologies (workspace_id, name, description, likelihood_scale, impact_scale, matrix, thresholds, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 1)`).run(
+    db.prepare(`INSERT INTO risk_methodologies (workspace_id, name, description, likelihood_scale, impact_scale, matrix, thresholds, is_active, management_system)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`).run(
       req.workspace.id, m.name, m.description,
       JSON.stringify(m.likelihood_scale), JSON.stringify(m.impact_scale),
-      JSON.stringify(m.matrix), JSON.stringify(m.thresholds));
-    logAction(req.user.id, req.workspace.id, 'reset_risk_methodology', 'methodology', null, null, auditCtx(req));
-    res.redirect('/workspaces/' + req.workspace.id + '/risk-methodology');
+      JSON.stringify(m.matrix), JSON.stringify(m.thresholds), system);
+    logAction(req.user.id, req.workspace.id, 'reset_risk_methodology', 'methodology', null, { management_system: system }, auditCtx(req));
+    res.redirect(methodPage(req, system));
   });
 
   // ==================== ENHANCED ACTIVITY LOG ====================
@@ -467,9 +509,12 @@ function register(app, deps) {
   app.get('/workspaces/:wsId/risks/:id/treatments', requireAuth, requireWorkspace, requirePermission('risk.view'), (req, res) => {
     const risk = db.prepare('SELECT * FROM risks WHERE id=? AND workspace_id=?').get(req.params.id, req.workspace.id);
     if (!risk) return res.status(404).send('Not found');
-    const treatments = db.prepare('SELECT * FROM risk_treatments WHERE risk_id=? ORDER BY due_date IS NULL, due_date').all(risk.id);
-    const allControls = db.prepare(`SELECT id, title FROM iso_items WHERE type='control' ORDER BY sort_order`).all();
-    res.render('risk_treatments', { user: req.user, ws: req.workspace, risk, treatments, allControls });
+    const treatments = reqOpts.nameRows(req.workspace, db.prepare(`SELECT t.*, rq.title AS iso_title, rq_fw.code AS iso_framework
+      FROM risk_treatments t ${reqOpts.joinSql('t.iso_item_id')}
+      WHERE t.risk_id=? ORDER BY t.due_date IS NULL, t.due_date`).all(risk.id));
+    // The implementing control comes from the risk's own management system.
+    const controlGroups = riskLinks.pickerGroups(db, req.workspace, risk.id);
+    res.render('risk_treatments', { user: req.user, ws: req.workspace, risk, treatments, controlGroups });
   });
 
   app.post('/workspaces/:wsId/risks/:id/treatments', requireAuth, requireWorkspace, requirePermission('risk.update'), (req, res) => {
@@ -483,7 +528,7 @@ function register(app, deps) {
       due_date || null, status || 'planned', cost_estimate || null,
       expected_residual_l ? parseInt(expected_residual_l) : null,
       expected_residual_i ? parseInt(expected_residual_i) : null,
-      iso_item_id || null
+      iso_item_id && reqOpts.belongs(db, req.workspace, iso_item_id) ? iso_item_id : null
     ).lastInsertRowid;
     logAction(req.user.id, req.workspace.id, 'create_treatment', 'treatment', id, { risk_id: req.params.id, title }, auditCtx(req));
     res.redirect(`/workspaces/${req.workspace.id}/risks/${req.params.id}/treatments`);
@@ -494,7 +539,13 @@ function register(app, deps) {
     if (!risk) return res.status(404).send('Risk not found');
     const f = ['title','description','owner_name','due_date','completed_date','status','cost_estimate','expected_residual_l','expected_residual_i','iso_item_id'];
     const set = []; const vals = [];
-    f.forEach(k => { if (req.body[k] !== undefined) { set.push(`${k}=?`); vals.push(req.body[k] || null); } });
+    f.forEach(k => {
+      if (req.body[k] === undefined) return;
+      set.push(`${k}=?`);
+      vals.push(k === 'iso_item_id'
+        ? (req.body[k] && reqOpts.belongs(db, req.workspace, req.body[k]) ? req.body[k] : null)
+        : (req.body[k] || null));
+    });
     if (req.body.status === 'done' && !req.body.completed_date) { set.push(`completed_date=date('now')`); }
     if (set.length) {
       vals.push(req.params.tId, req.params.id);
@@ -517,14 +568,15 @@ function register(app, deps) {
   app.post('/workspaces/:wsId/risk-methodology/preset/:key', requireAuth, requireWorkspace, requirePermission('risk.methodology'), (req, res) => {
     const preset = METHODOLOGY_PRESETS[req.params.key];
     if (!preset) return redirectBack(req, res);
-    db.prepare(`UPDATE risk_methodologies SET is_active=0 WHERE workspace_id=?`).run(req.workspace.id);
-    db.prepare(`INSERT INTO risk_methodologies (workspace_id, name, description, likelihood_scale, impact_scale, matrix, thresholds, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 1)`).run(
+    const system = methodSystem(req);
+    deactivateMethods(req.workspace.id, system);
+    db.prepare(`INSERT INTO risk_methodologies (workspace_id, name, description, likelihood_scale, impact_scale, matrix, thresholds, is_active, management_system)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`).run(
       req.workspace.id, preset.name, preset.description,
       JSON.stringify(preset.likelihood_scale), JSON.stringify(preset.impact_scale),
-      JSON.stringify(preset.matrix), JSON.stringify(preset.thresholds));
-    logAction(req.user.id, req.workspace.id, 'apply_methodology_preset', 'methodology', null, { preset: req.params.key }, auditCtx(req));
-    res.redirect(`/workspaces/${req.workspace.id}/risk-methodology`);
+      JSON.stringify(preset.matrix), JSON.stringify(preset.thresholds), system);
+    logAction(req.user.id, req.workspace.id, 'apply_methodology_preset', 'methodology', null, { preset: req.params.key, management_system: system }, auditCtx(req));
+    res.redirect(methodPage(req, system));
   });
 
   // ==================== SOA SNAPSHOTS + PER-ENTITY ====================
@@ -706,8 +758,33 @@ function register(app, deps) {
     seedFirmRiskLibraryIfEmpty(firmId);
     const counts = {
       risks: db.prepare('SELECT COUNT(*) c FROM firm_risk_library WHERE firm_id=?').get(firmId).c,
+      templates: db.prepare('SELECT COUNT(*) c FROM doc_templates WHERE firm_id=? AND is_system=0').get(firmId).c,
     };
     res.render('firm_library', { user: req.user, ws: null, counts }); // firm-level page - firm sidebar
+  });
+
+  // The firm's own document templates, saved from client documents
+  // (lib/firm-templates.js). They appear in every client's template library.
+  app.get('/firm/library/templates', requireAuth, (req, res) => {
+    if (!isFirmUser(req.user)) return res.status(403).render('error', { user: req.user, message: 'This area is for firm staff only.' });
+    const firmId = getActiveFirmId(req);
+    if (!firmId) return res.redirect('/tenants');
+    res.render('firm_library_templates', { user: req.user, ws: null, templates: require('../lib/firm-templates').list(db, firmId),
+      canManage: rbac.rolePermissions(req.user.firm_role).includes('firm.library.manage') });
+  });
+
+  app.post('/firm/library/templates/:id(\\d+)/delete', requireAuth, (req, res) => {
+    if (!requireFirmLibraryManage(req, res)) return;
+    const firmId = getActiveFirmId(req);
+    const firmTemplates = require('../lib/firm-templates');
+    try {
+      const t = firmTemplates.remove(db, firmId, Number(req.params.id));
+      logAction(req.user.id, null, 'delete_firm_template', 'doc_template', t.id, { name: t.name });
+      res.redirect(withToast('/firm/library/templates', `Removed "${t.name}". Documents already made from it are unchanged.`));
+    } catch (e) {
+      if (!(e instanceof firmTemplates.FirmTemplateError)) throw e;
+      res.redirect(withToast('/firm/library/templates', e.message, 'error'));
+    }
   });
 
   app.get('/firm/library/risks', requireAuth, (req, res) => {
@@ -831,6 +908,7 @@ function register(app, deps) {
         if (have.has(r.title)) continue;
         const info = ins.run(req.workspace.id, r.title, r.description, r.threat, r.vulnerability,
           r.suggested_likelihood || 3, r.suggested_impact || 3, '');
+        riskOwner.assign(db, req.workspace, info.lastInsertRowid);
         clonedIds.push(info.lastInsertRowid);
         added++;
       }

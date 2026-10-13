@@ -59,6 +59,7 @@ test('client summaries are rebuilt from only the programmes actually selected', 
     client_name: 'AI and Privacy Client',
     industry: 'Technology',
     frameworks: ['iso42001', 'dpdpa'],
+    engagement_outcome: 'certification_support',
   });
   assert.equal(created.status, 302);
   const id = workspaceId(created.location);
@@ -74,16 +75,23 @@ test('client summaries are rebuilt from only the programmes actually selected', 
   assert.doesNotMatch(page.text, /ISO 27001|Engagement intake and scope sign-off|certification cycle/i);
 });
 
-test('programme-neutral clients receive a working assignment path instead of an ISO intake', async (t) => {
-  const { client } = await bootClient();
+test('a client needs a programme, and one left without any gets an assignment path instead of an ISO intake', async (t) => {
+  const { client, dbPath } = await bootClient();
   t.after(() => client.close());
 
-  const created = await client.post('/workspaces', {
+  const refused = await client.post('/workspaces', {
     client_name: 'Planning Only Client',
     industry: 'Professional services',
   });
-  assert.equal(created.status, 302);
-  const id = workspaceId(created.location);
+  assert.equal(refused.status, 400);
+  assert.match(refused.text, /Choose at least one programme for this client/);
+  // A client created before programmes were required has none.
+  const conn = new Database(dbPath);
+  assert.equal(conn.prepare("SELECT COUNT(*) c FROM workspaces WHERE client_name='Planning Only Client'").get().c, 0);
+  const lead = conn.prepare("SELECT id, firm_id FROM users WHERE email='sec-test@example.com'").get();
+  const id = Number(conn.prepare(`INSERT INTO workspaces (firm_id, client_name, industry, lead_consultant_id, frameworks)
+    VALUES (?, 'Planning Only Client', 'Professional services', ?, '[]')`).run(lead.firm_id, lead.id).lastInsertRowid);
+  conn.close();
 
   const page = await client.get('/onboarding');
   assert.match(page.text, /No services assigned/);
@@ -102,6 +110,7 @@ test('consultants see setup guidance only for clients assigned to them', async (
   const assigned = await client.post('/workspaces', {
     client_name: 'ASSIGNED-ONBOARDING-CLIENT',
     frameworks: ['iso42001'],
+    engagement_outcome: 'certification_support',
   });
   const assignedId = workspaceId(assigned.location);
   const hidden = await client.post('/workspaces', {
@@ -150,7 +159,7 @@ test('onboarding state changes are manager-only and skip is not completion', asy
   assert.equal(state.skipped, 1);
   assert.equal(state.completed_at, null, 'dismissing the guide is not completion');
 
-  const created = await client.post('/workspaces', { client_name: 'Completion Client' });
+  const created = await client.post('/workspaces', { client_name: 'Completion Client', frameworks: 'csf' });
   assert.equal(created.status, 302);
   const createdId = workspaceId(created.location);
   const completed = await client.post('/onboarding/complete', {});

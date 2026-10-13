@@ -20,16 +20,17 @@
     <div class="text-base" style="margin-top:14px;color:var(--accent);font-weight:500;">Manage risks →</div>
   </a>
 
-  <div class="panel" style="padding:18px 20px;opacity:0.6;">
+  <a href="/firm/library/templates" class="panel" style="display:block;padding:18px 20px;text-decoration:none;">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
       <span style="font-size:15px;font-weight: 500;">Policy templates</span>
-      <span class="tag tag-neutral text-xxs" style="margin-left:auto;">soon</span>
+      <span class="tag tag-info text-xxs" style="margin-left:auto;"><%= counts.templates %> template<%= counts.templates === 1 ? '' : 's' %></span>
     </div>
     <div class="meta text-md" style="line-height:1.5;">
-      Your firm's policy library - InfoSec Policy, AUP, Access Control, Incident Response, Supplier Security. Customise once per firm style; clone into clients.
+      Documents your team wrote for one client, saved from the document page with the client's name taken out. They sit beside the standard templates in every client's template library.
     </div>
-  </div>
+    <div class="text-base" style="margin-top:14px;color:var(--accent);font-weight:500;">Manage templates →</div>
+  </a>
 
   <div class="panel" style="padding:18px 20px;opacity:0.6;">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">

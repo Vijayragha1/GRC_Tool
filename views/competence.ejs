@@ -71,7 +71,7 @@
             <td class="meta text-base"><%= r.role_name %></td>
             <td><strong><%= r.person_name %></strong><% if (r.person_email) { %><div class="meta text-xs"><%= r.person_email %></div><% } %></td>
             <td><%= r.competence %></td>
-            <td class="meta text-base"><% if (r.evidence_type) { %><strong><%= r.evidence_type %></strong><% } %><% if (r.evidence_ref) { %> &middot; <%= r.evidence_ref %><% } %></td>
+            <td class="meta text-base"><% if (r.evidence_type) { %><strong><%= r.evidence_type %></strong><% } %><% if (r.evidence_ref) { %> &middot; <%= r.evidence_ref %><% } %><% if (r.evidence_id) { %> &middot; <a href="/workspaces/<%= ws.id %>/evidence/<%= r.evidence_id %>/download"><%= r.evidence_filename || 'evidence file' %></a><% } %></td>
             <td class="meta text-base"><%= r.recorded_at || '-' %></td>
             <td class="meta text-base">
               <%= r.expires_on || '-' %>
@@ -110,6 +110,7 @@
           <option value="Other">Other</option>
         </select></div>
         <div><label class="label">Evidence ref</label><input class="input" name="evidence_ref" placeholder="cert no., training ID, CV ref"></div>
+        <div><label class="label">Evidence file</label><select class="select" name="evidence_id"><option value="">- none -</option><% (typeof evidenceFiles !== 'undefined' ? evidenceFiles : []).forEach(f => { %><option value="<%= f.id %>"><%= f.filename %></option><% }) %></select></div>
         <div><label class="label">Recorded</label><input type="date" class="input" name="recorded_at"></div>
         <div><label class="label">Expires</label><input type="date" class="input" name="expires_on"></div>
         <div></div>

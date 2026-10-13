@@ -30,6 +30,9 @@
     <div><label class="label">Severity</label>
       <select class="select" name="severity"><option value="major">Major</option><option value="minor" selected>Minor</option><option value="observation">Observation</option></select>
     </div>
+    <div class="col-full"><label class="label">Related requirement</label>
+      <%- include('partials/requirement_select', { groups: typeof requirementGroups !== 'undefined' ? requirementGroups : [], name: 'iso_item_id' }) %>
+    </div>
     <div class="col-full"><button class="btn btn-primary">Create</button></div>
   </form>
 </div>

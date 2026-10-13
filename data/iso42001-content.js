@@ -14,6 +14,11 @@
 //   evidence_to_look_for   - array of {item, what_it_tells_you}
 //   scoping_notes          - short paragraph on common carve-outs and
 //                            structure decisions
+//   minimum_certifiable    - the smallest implementation a certification
+//                            body will still accept at Stage 2. Deliberately
+//                            narrower than what_good_looks_like: the floor is
+//                            the pass mark, not the advice. Cites the clause
+//                            or Annex A control it rests on.
 //   maturity_ladder        - {1,2,3,4} concrete description per CMMI level
 //   related_items          - array of iso42001 item ids the auditor will
 //                            check alongside this one
@@ -43,6 +48,7 @@ module.exports = {
       { item: "Management-review minutes from the last 12 months where context was discussed", what_it_tells_you: "Whether the register is alive or fossilised" }
     ],
     scoping_notes: "Some organizations capture AI context inside the AIMS scope statement; others maintain a separate register. Both are acceptable. What is not acceptable is having no documented determination at all, or documenting once and never revisiting. The role determination is the AI-specific addition vs ISO 27001 - missing it is usually a major nonconformity because Annex A.10 cannot be applied without it.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a one-page AI context register listing 6-10 organisation-specific external and internal issues - not AI-industry boilerplate - plus the documented determination clause 4.1 requires on its face of the organization's role (provider, developer, deployer, user) for each in-scope AI system. At least two issues visibly feed the AI risk register. Dated, with one recorded review since the AIMS was established.",
     maturity_ladder: {
       1: "AI context discussed verbally; nothing written, or what's written is generic AI-industry boilerplate",
       2: "Specific organisation-tailored AI context register exists; AI roles per system documented; reviewed at planned intervals",
@@ -69,6 +75,7 @@ module.exports = {
       { item: "Records of consultation or feedback channels for affected groups", what_it_tells_you: "Whether the org has any real path to learn about adverse impacts post-deployment" }
     ],
     scoping_notes: "For deployers using third-party AI, the supplier may be both an interested party (commercial relationship) and a control point (data-processing relationship). Don't double-count - one entry, multiple roles. Where AI is embedded in a product, end-customers of the product are an interested party even if they don't know AI is involved.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a register of 8-15 interested parties with their AI-specific requirements - named regulators with the obligations cited, named customers with the clauses they impose, and the affected individuals or groups clause 4.2 calls out explicitly where the AI makes or supports decisions about people. Each requirement points to where in the AIMS it is addressed.",
     maturity_ladder: {
       1: "No documented determination of interested parties for the AIMS, or only ISO 27001-style copy-paste",
       2: "Register exists, covers customers/regulators/employees, but missed affected individuals or societal groups",
@@ -94,6 +101,7 @@ module.exports = {
       { item: "Justifications for any excluded AI use", what_it_tells_you: "Whether the exclusions are defensible" }
     ],
     scoping_notes: "It is acceptable - and often advisable - to start narrow (one AI system, one lifecycle stage, one business unit) and expand. A narrow but real scope passes certification; a broad but undocumented scope does not. If shadow AI is excluded, say so and say what control prevents in-scope creep.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a scope statement available as documented information per clause 4.3, naming the in-scope AI systems, the lifecycle stages covered, the organisational units and locations, and each exclusion with a one-line rationale. It may be narrow - one AI system, one lifecycle stage - provided the AI inventory carries the same boundary and no in-scope system is missing from it.",
     maturity_ladder: {
       1: "Scope is vague or copied from another framework's scope; cannot be verified",
       2: "Scope statement is documented and specific to AI systems and lifecycle stages, but inventory and scope may drift apart over time",
@@ -117,6 +125,7 @@ module.exports = {
       { item: "Recent artefacts from each process (risk assessments, impact assessments, audits, review minutes, corrective actions)", what_it_tells_you: "Whether the AIMS is operational or shelfware" }
     ],
     scoping_notes: "There is no required form. A working AIMS in a 50-person company can be 10 pages plus operational records; in a 5000-person company it will be larger. What matters is that the system works.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a short description of the AIMS processes and how they hand off to each other (clause 4.4), backed by records from one completed operating cycle - a risk assessment, an impact assessment, an internal audit, a management review. Clauses 9.2 and 9.3 say planned intervals, but in practice no certification body grants Stage 2 without one of each on record.",
     maturity_ladder: {
       1: "AIMS exists as a binder of policies; processes are unclear or invisible",
       2: "AIMS processes documented; first operational cycle complete (one risk assessment, one impact assessment, one internal audit)",
@@ -145,6 +154,7 @@ module.exports = {
       { item: "Signed risk acceptances at executive level for residual AI risks above threshold", what_it_tells_you: "Whether accountability matches the policy" }
     ],
     scoping_notes: "In smaller organizations the executive sponsor may be the founder or CEO; in larger ones it is typically a C-suite role with AI-and-risk accountability. The role need not be AI-specific - a CISO who owns AI risk is fine.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a named top-management sponsor recorded in attendance at the management review who can describe the AIMS in interview, resourcing that is visible (a budget line, named staff, or tooling), and at least one recorded top-management decision arising from the AIMS - a residual-risk acceptance, a refused use case, an approved treatment plan. Clause 5.1 is tested by interview as much as by document.",
     maturity_ladder: {
       1: "Leadership commitment stated in policy; not visible in practice",
       2: "Executive sponsor identified and attends management reviews; resources allocated reactively",
@@ -156,9 +166,11 @@ module.exports = {
 
   'ai-clause-5.2': {
     purpose: "Requires a documented AI policy approved at the top - the single artefact that says what the organization commits to in its development, provision, and use of AI. Distinct from an information-security policy because the commitments are different (fairness, transparency, human oversight, safety, sustainability, etc., in addition to security and privacy).",
-    what_good_looks_like: "A 1-3 page AI policy approved by top management, dated and versioned. It states the organization's purpose for AI, the principles it commits to (typically fairness, transparency, accountability, safety, human oversight, privacy and security), prohibited uses (e.g., social-scoring, weaponisation, autonomous action above defined thresholds), and the framework for setting AI objectives. It explicitly references applicable obligations (EU AI Act, sectoral regulation, internal commitments). It is communicated to all staff who develop or use AI, and made externally available where appropriate. It is reviewed annually or on triggering events.",
+    what_good_looks_like: "A 1-3 page AI policy approved by top management, dated and versioned. It states the organization's purpose for AI, the principles it commits to (typically fairness, transparency, accountability, safety, human oversight, privacy and security), and the framework for setting AI objectives. Three things Clause 5.2 requires it to take into account are visible on the page, not implied: the business strategy for AI (what the organization is building or buying AI to do, over what horizon); the organization's values and culture, and how they bound acceptable AI use; and the level of AI risk the organization is willing to pursue or retain - an AI risk appetite stated concretely enough that a risk owner can apply it, and consistent with the risk acceptance criteria in the 6.1.2 methodology. It explicitly references applicable obligations (EU AI Act, sectoral regulation, internal commitments). VA also advises stating prohibited uses (e.g., social scoring, weaponisation, autonomous action above defined thresholds); that is Annex B guidance for A.2.2 rather than a Clause 5.2 requirement, but it is what makes the policy usable by staff. It is communicated to all staff who develop or use AI, and made externally available where appropriate. It is reviewed on a defined cadence and on triggering events.",
     common_pitfalls: [
-      "Policy is a list of principles with no prohibitions - staff cannot tell what they cannot do",
+      "No stated AI risk appetite - the policy commits to principles but never says how much AI risk the organization will carry, so 6.1.2 acceptance criteria have nothing to anchor to. Clause 5.2 requires it to be taken into account",
+      "Business strategy and organizational values not reflected - the policy would read identically at any company in any sector",
+      "Policy is a list of principles with no prohibitions - staff cannot tell what they cannot do (VA advice, via A.2.2, not a 5.2 gate)",
       "Policy is the public AI marketing page lightly edited - good for PR, useless for governance",
       "Approved by a middle manager, not top management",
       "Not communicated to people who build or use AI - it lives only in the AIMS folder",
@@ -166,15 +178,18 @@ module.exports = {
     ],
     evidence_to_look_for: [
       { item: "AI policy, dated and approved at the documented authority level", what_it_tells_you: "Whether the policy exists in the form Clause 5.2 requires" },
+      { item: "The passage of the policy that states the AI risk appetite, read next to the risk acceptance criteria in the 6.1.2 methodology", what_it_tells_you: "Whether the appetite was taken into account, and whether policy and methodology agree" },
+      { item: "The passage tying the policy to the business strategy and to the organization's values", what_it_tells_you: "Whether the policy was written for this organization" },
       { item: "Communication and acknowledgement records (training, intranet, onboarding)", what_it_tells_you: "Whether staff have seen the policy" },
       { item: "Public-facing variant where the policy commits to external transparency", what_it_tells_you: "Whether external commitments match internal reality" },
       { item: "Review records showing the policy has been re-examined", what_it_tells_you: "Whether the policy is alive or static" }
     ],
     scoping_notes: "Some organizations bundle responsible-AI principles into a wider corporate code of conduct; ISO 42001 requires that there is an AI policy specifically. A code of conduct can suffice if it has an AI section with the required commitments. A separate AI policy is usually clearer.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a 1-3 page AI policy approved and dated by top management, communicated to staff who develop or use AI, committing to satisfy applicable requirements and to continual improvement. Clause 5.2 also requires it to take account of the business strategy, the organisation's values and culture, and the level of AI risk it will pursue or retain - a policy of principles referencing none of the three is short at 5.2.",
     maturity_ladder: {
-      1: "No AI policy, or a generic AI-ethics statement without commitments or prohibitions",
-      2: "AI policy approved and communicated; covers principles and applicable obligations",
-      3: "Policy is the explicit reference point for AI development and use decisions; staff cite it; reviewed annually",
+      1: "No AI policy, or a generic AI-ethics statement with no commitments",
+      2: "AI policy approved and communicated; covers principles and applicable obligations; takes account of the business strategy, the organization's values, and the level of AI risk it is willing to pursue or retain",
+      3: "Prohibited and restricted uses stated explicitly (VA advice via A.2.2); policy is the explicit reference point for AI development and use decisions; staff cite it; reviewed on the defined cadence",
       4: "Policy is updated on regulatory and business triggers; effectiveness measured (e.g., decisions deferred or escalated as a result of policy)"
     },
     related_items: ['ai-clause-5.1', 'ai-clause-5.3', 'ai-annex-a-2-2', 'ai-annex-a-2-3', 'ai-annex-a-2-4']
@@ -195,6 +210,7 @@ module.exports = {
       { item: "Recent decisions (deployment approval, risk acceptance, suspension) traceable to a documented role", what_it_tells_you: "Whether the role structure is actually used" }
     ],
     scoping_notes: "In a small organization, several roles can be held by the same person, provided segregation requirements (e.g., not approving your own model deployment) are observed. In larger organizations the AI risk function should sit outside the AI delivery function.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented and communicated assignment of AIMS responsibilities and authorities (clause 5.3) naming, at minimum, who owns the AIMS, who owns each in-scope AI system, who authorises a deployment, and who reports AIMS performance to top management. One person may hold several roles; nobody may approve their own deployment on a high-risk system.",
     maturity_ladder: {
       1: "Responsibilities not documented; AIMS owner exists implicitly",
       2: "Roles matrix documented and communicated; AI model owners named per system",
@@ -221,6 +237,7 @@ module.exports = {
       { item: "Effectiveness review records for planned actions", what_it_tells_you: "Whether the planning cycle closes" }
     ],
     scoping_notes: "It is common to maintain both a small AIMS-level risk register (e.g., 'we lose our model-monitoring tool', 'regulator publishes new high-risk classification') and a larger AI-system risk register (one per AI system). Both are required, but they are distinct.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a written determination of the AIMS-level risks and opportunities arising from the 4.1 issues and 4.2 requirements, the actions planned to address them, and where those actions are tracked (clause 6.1.1). This is the AIMS-level view, distinct from the per-AI-system assessment at 6.1.2 - an auditor who finds only the latter will raise 6.1.1.",
     maturity_ladder: {
       1: "No planning approach documented; risks identified ad hoc",
       2: "Planning approach documented; AIMS-level risks identified and tracked",
@@ -231,22 +248,24 @@ module.exports = {
   },
 
   'ai-clause-6.1.2': {
-    purpose: "Requires an AI risk assessment process that establishes criteria, identifies risks to and from AI systems, analyses them, and evaluates them against criteria. The critical distinction from ISO 27001 is that AI risks are not only CIA-style information security risks - they include fairness, opacity, robustness, automation bias, misuse, environmental, and societal categories drawn from Annex C.",
-    what_good_looks_like: "A documented AI risk methodology with explicit risk criteria (likelihood scale, consequence scale across categories, acceptance thresholds). The categories explicitly cover Annex C topics - bias and fairness, robustness, security and privacy, transparency, oversight, environmental, and societal. Each in-scope AI system has at least one assessment, with named risk owner, analysis, evaluation, and traceability to treatment (6.1.3) or acceptance. Assessments are repeatable - two analysts using the same methodology on the same system reach comparable results.",
+    purpose: "Requires an AI risk assessment process that establishes criteria, identifies risks to and from AI systems, analyses them, and evaluates them against criteria. The critical distinction from ISO 27001 is that AI risks are not only CIA-style information security risks - they include fairness, opacity, robustness, automation bias, misuse, environmental, and societal categories. The informative Annex C collects risk sources of this kind and is a useful prompt list, but the clause requires the risk identification, not the citation.",
+    what_good_looks_like: "A documented AI risk methodology with explicit risk criteria (likelihood scale, consequence scale across categories, acceptance thresholds) retained as documented information, so the criteria used in last year's assessment can be compared with this year's. The categories cover the AI-specific ground - bias and fairness, robustness, security and privacy, transparency, oversight, environmental, and societal. Each in-scope AI system has at least one assessment, with named risk owner, analysis, evaluation, and traceability to treatment (6.1.3) or acceptance. Assessments produce consistent, valid and comparable results - two analysts using the same methodology on the same system reach comparable ratings, and a re-run next year is comparable to this year's.",
     common_pitfalls: [
       "Methodology silently copies the ISO 27001 risk method - AI risks are evaluated only along CIA, missing fairness, robustness, automation bias, etc.",
       "Risk criteria absent or different across assessments, so results aren't comparable",
-      "Annex C risk sources never referenced; assessor relies on intuition",
+      "No prompt list at all behind the identification step - the assessor works from intuition and the AI-specific sources (bias, automation bias, drift, misuse) get missed. Annex C is informative, so not citing it is not a nonconformity; having nothing in its place is what produces the finding",
       "Risk owners are roles (\"the data team\") not named individuals",
       "Risks identified but treatment unclear - the bridge to 6.1.3 is missing"
     ],
     evidence_to_look_for: [
       { item: "AI risk assessment methodology document with criteria explicit", what_it_tells_you: "Whether assessments are repeatable and AI-aware" },
       { item: "AI risk register with at least one entry per in-scope AI system", what_it_tells_you: "Whether the methodology is actually applied" },
-      { item: "Two assessments performed by different analysts that converge on similar risk ratings", what_it_tells_you: "Whether the methodology produces comparable results" },
-      { item: "Annex C risk-source coverage in the methodology", what_it_tells_you: "Whether the assessment is AI-aware" }
+      { item: "Two assessments performed by different analysts that converge on similar risk ratings", what_it_tells_you: "Whether the methodology produces consistent, valid and comparable results as 6.1.2 requires" },
+      { item: "Retained risk criteria (versioned), referenced by the assessments that used them", what_it_tells_you: "Whether the criteria were established and maintained, or re-invented per assessment" },
+      { item: "A documented prompt list of AI risk sources behind the identification step - Annex C is a good one, so are NIST AI RMF and the organization's own incident history", what_it_tells_you: "Whether identification is systematic or intuitive. VA recommends Annex C; it is informative, so an equivalent list is equally acceptable" }
     ],
-    scoping_notes: "Risk assessment frequency: at least annually per in-scope AI system, plus on significant change (re-training, intended-use change, new deployment context). Where many AI systems are similar (e.g., variants of one model in many languages), one assessment with documented system-specific deltas is acceptable.",
+    scoping_notes: "Frequency is the organization's to set: Clause 8.2 requires AI risk assessment at planned intervals that the organization defines, and when significant changes are proposed or occur. VA recommended practice is at least annually per in-scope AI system plus on significant change (re-training, intended-use change, new deployment context) - recommend it, and ask the client to record the interval it chose and the rationale, rather than quoting annual as a requirement of the standard. Where many AI systems are similar (e.g., variants of one model in many languages), one assessment with documented system-specific deltas is acceptable.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented AI risk assessment process whose risk criteria, including risk-acceptance criteria, are retained as documented information and applied so repeated assessments give consistent, valid and comparable results (clause 6.1.2). At least one completed assessment per in-scope AI system, each with a named risk owner, an analysis, and an evaluation against the criteria. Annex C is informative - not citing it is not a finding.",
     maturity_ladder: {
       1: "No documented AI risk methodology; assessments are ad hoc or reuse ISO 27001 method without adaptation",
       2: "Methodology documented with AI-specific criteria; assessments performed for each in-scope AI system",
@@ -273,6 +292,7 @@ module.exports = {
       { item: "Linkage from each Annex A inclusion to a specific risk it treats", what_it_tells_you: "Whether the SoA was built from risks or invented top-down" }
     ],
     scoping_notes: "The SoA is the most-examined document in an ISO 42001 audit. Excluded Annex A controls need substantive justifications (\"we do not develop AI systems; the development controls do not apply\" is fine; \"we do not consider this control necessary\" is not).",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a risk treatment plan with an action, an owner and a target date for every risk above the acceptance threshold, approved by the risk owners together with the residual risks. A Statement of Applicability covering all 38 Annex A controls, recording per clause 6.1.3 whether each is necessary, the justification, and whether it is implemented. Exclusions carry a substantive reason, not 'not applicable'.",
     maturity_ladder: {
       1: "Treatment plan absent or only summarised in slides; SoA missing or incomplete",
       2: "Treatment plan documented; SoA covers all Annex A controls with justifications",
@@ -299,6 +319,7 @@ module.exports = {
       { item: "Stakeholder-consultation records for high-impact systems", what_it_tells_you: "Whether affected groups are heard" }
     ],
     scoping_notes: "Public frameworks (NIST AI RMF, EU AI Act FRIA, Canada AIDA AIA) provide useful structure - building on one of them speeds implementation and aids auditor confidence. The impact assessment must produce a documented report (see Annex A.5.3) and is referenced in 8.4 for the operational refresh cycle.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented process for assessing the consequences of the organisation's AI systems for individuals, groups of individuals, and society (clause 6.1.4), naming what triggers an assessment, who performs it, what it covers, and how its output reaches risk treatment. A process that only assesses risk to the organisation does not satisfy 6.1.4 - the direction of this assessment is outward.",
     maturity_ladder: {
       1: "No impact-assessment process, or only an ad-hoc risk-assessment substitute",
       2: "Methodology documented with proportionality; one or more systems assessed",
@@ -323,6 +344,7 @@ module.exports = {
       { item: "Management-review records discussing objectives", what_it_tells_you: "Whether objectives feed governance" }
     ],
     scoping_notes: "Objectives should differ from controls. \"Implement A.6.2.4 verification controls\" is not an objective - it's a treatment action. An objective might be \"validation suite covers fairness, robustness, and accuracy for 100% of customer-facing models\".",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: 3-7 documented AI objectives consistent with the AI policy, each measurable where practicable and carrying a target, a timeframe, an owner, and how results are evaluated (clause 6.2), monitored and communicated. A list that restates Annex A controls as objectives reads as a treatment plan and will not be accepted as 6.2.",
     maturity_ladder: {
       1: "No documented AI objectives, or objectives are vague aspirations",
       2: "Objectives documented, measurable, with owners and timeframes; first measurement cycle complete",
@@ -347,6 +369,7 @@ module.exports = {
       { item: "Re-validation results after a model retraining", what_it_tells_you: "Whether post-change verification works" }
     ],
     scoping_notes: "MLOps practices already cover much of this - tie the AIMS change requirement into the existing MLOps pipeline, don't build a parallel one. The ISO 42001 ask is that the existing process meets the AIMS criteria (impact-aware approval, documentation, verification), not that a new process is invented.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented change route covering both AIMS changes and AI-system changes - retraining, dataset change, change of intended use, architecture change - showing changes are carried out in a planned manner (clause 6.3). One or two sampled recent changes show the route was followed: an assessment of impact, an approval at the right level, and a post-change check.",
     maturity_ladder: {
       1: "No change procedure that covers AI-system changes; retraining is informal",
       2: "Change procedure documented; covers AI-system retraining and intended-use changes",
@@ -365,14 +388,18 @@ module.exports = {
     common_pitfalls: [
       "AIMS is funded out of unspecified slack in other budgets - no record of what's spent",
       "AI-specific tooling (monitoring, fairness eval, bias detection) is absent because nobody owns the procurement decision",
-      "Staffing assumes existing security/data-protection staff can absorb AI duties without adjustment"
+      "Staffing assumes existing security/data-protection staff can absorb AI duties without adjustment",
+      "Resources were determined once at AIMS set-up and never reviewed for adequacy - this is where the 7.1 finding usually sits, not in the absence of resources. Ask who looked at adequacy, when, and what changed as a result",
+      "The AI footprint grew (a second in-scope system, a new jurisdiction, a larger model) but the resource determination was not revisited"
     ],
     evidence_to_look_for: [
       { item: "Budget records identifying AIMS-related spend", what_it_tells_you: "Whether resources are real" },
       { item: "Tooling inventory covering monitoring, evaluation, registry, lineage", what_it_tells_you: "Whether the operational tools exist" },
-      { item: "Management-review discussion of resource adequacy", what_it_tells_you: "Whether resources are actively reviewed" }
+      { item: "Management-review minutes where resource adequacy was discussed, with the conclusion reached", what_it_tells_you: "Whether adequacy is reviewed, or only the existence of a budget is recorded" },
+      { item: "A resource request or re-plan triggered by AIMS demand (a hire, a tool purchase, reassigned time)", what_it_tells_you: "Whether a reviewed shortfall actually produces a change" }
     ],
     scoping_notes: "Open-source tooling counts - what matters is that the capability exists, not who's paying for the tool. Document which tools are in use.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a written determination of the resources the AIMS needs - people, compute, data, tooling, budget - and evidence they were provided (clause 7.1): named staff with AIMS duties, identifiable budget or tooling, and a management-review record where resource adequacy was discussed. Open-source tooling counts. What fails is a resource need identified and left unfunded with no decision recorded.",
     maturity_ladder: {
       1: "AIMS funded out of nothing in particular; resource adequacy not reviewed",
       2: "Identifiable budget and staffing; tooling for monitoring/evaluation/registry in place",
@@ -398,6 +425,7 @@ module.exports = {
       { item: "Records of competence verification (assessment, project review, peer feedback)", what_it_tells_you: "Whether competence is verified or assumed" }
     ],
     scoping_notes: "External staff (contractors, auditors, vendors) who work on AIMS-relevant activities are in scope. Their competence may be evidenced through their employer's records.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: the necessary competence written down for each AIMS role, evidence that the people holding those roles have it (CV, training record, certificate), and a recorded action where a gap was found (clause 7.2). Coverage includes non-technical users of AI output, not only the data-science team. Contractor competence may rest on their employer's records.",
     maturity_ladder: {
       1: "Competence not documented; reliance on hiring decisions",
       2: "Competence matrix exists for AIMS roles; gaps closed via training or hiring",
@@ -421,6 +449,7 @@ module.exports = {
       { item: "Specific examples of prohibited / acceptable AI use", what_it_tells_you: "Whether the awareness is operationally useful" }
     ],
     scoping_notes: "In organizations using generative AI tools widely, awareness should cover data hygiene (don't paste customer data into public LLMs), output verification, and disclosure obligations.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: AI-specific awareness delivered to persons doing work under the organisation's control who touch AI, covering the AI policy, their contribution to AIMS effectiveness, and the implications of not conforming (clause 7.3). Completion records exist for the large majority of in-scope staff, with non-completion tracked. Generic information-security awareness carrying no AI content does not satisfy 7.3.",
     maturity_ladder: {
       1: "No awareness programme, or only an annual generic compliance training",
       2: "AI-specific awareness delivered to all relevant staff; acknowledged",
@@ -432,18 +461,20 @@ module.exports = {
 
   'ai-clause-7.4': {
     purpose: "Communications about the AIMS must be planned - internal (status, incidents, decisions) and external (regulators, partners, affected parties, public). For AI this is consequential because incidents, model behaviour changes, and disclosure obligations all involve communication; the wrong communication or none at all can convert a manageable event into a reputational or regulatory crisis.",
-    what_good_looks_like: "A communications plan or matrix lists planned internal and external communications - what, when, to whom, by whom, how. Authority to communicate externally is explicit (e.g., only the executive sponsor or designated comms team speaks on AI matters to regulators). Templates exist for high-stakes communications (incident notification, transparency disclosure). The plan is exercised periodically (drill or real event review).",
+    what_good_looks_like: "A communications plan or matrix lists planned internal and external communications across the four dimensions Clause 7.4 names - what is communicated, when, with whom, and how - and, as VA practice rather than a clause requirement, by whom. The \"when\" column is the one most often missing: each entry carries either a cadence (monthly AIMS status to the steering group) or a trigger with a time bound (AI incident meeting the severity threshold - regulator notified inside the applicable statutory window; material model behaviour change - affected customers informed before the change is live). Authority to communicate externally is explicit (e.g., only the executive sponsor or designated comms team speaks on AI matters to regulators). Templates exist for high-stakes communications (incident notification, transparency disclosure). The plan is exercised periodically (drill or real event review).",
     common_pitfalls: [
       "No external-comms templates - real incident response is improvised",
+      "The matrix says what and to whom but not when - no cadence and no trigger, so nothing is ever late and nothing is ever on time",
       "Authority to speak externally is unclear; everyone or nobody",
       "Internal escalation paths for AI ethical concerns are not communicated"
     ],
     evidence_to_look_for: [
-      { item: "Communications matrix or plan", what_it_tells_you: "Whether comms are planned or reactive" },
+      { item: "Communications matrix or plan with a populated \"when\" column (cadence or trigger) per entry", what_it_tells_you: "Whether comms are planned or reactive, and whether timing was ever decided" },
       { item: "Pre-approved templates for AI incident notification, customer disclosures, regulator notification", what_it_tells_you: "Whether templates support quick response" },
       { item: "Authorisation matrix for external comms", what_it_tells_you: "Whether the wrong person can speak on the wrong topic" }
     ],
     scoping_notes: "Coordinate with overall incident-response and crisis-comms plans. The AI-specific addition is identifying which AI events trigger which audiences (e.g., bias surfacing on a deployed model that affects EU users triggers EU AI Act notification timelines).",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a communications plan for AIMS-relevant internal and external communication that answers all five of what, when, with whom, how, and who communicates (clause 7.4). Timing and the authority to speak externally are the two most often missing. One worked example - an incident notification or a transparency disclosure - is enough to show the plan is real.",
     maturity_ladder: {
       1: "No comms plan; reactive only",
       2: "Comms plan documented; templates exist for known scenarios",
@@ -468,6 +499,7 @@ module.exports = {
       { item: "Retention schedule including AI evidence", what_it_tells_you: "Whether retention is defined" }
     ],
     scoping_notes: "Storing AI artefacts in a git repository is fine, provided the procedure recognises the repository as the controlled store, with tagged releases for the canonical versions auditors will examine.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: the documented information ISO 42001 requires exists, is identified with a version and a date, has an owner, and is available only to those who should see it (clause 7.5). AI artefacts - model cards, datasheets, evaluation reports - sit inside that control, not outside it. A git repository is an acceptable store if the procedure names it as the controlled one.",
     maturity_ladder: {
       1: "No control of AI artefacts beyond ad-hoc storage",
       2: "AI artefacts under document control; review cycles defined",
@@ -494,6 +526,7 @@ module.exports = {
       { item: "Records of unplanned-change review", what_it_tells_you: "Whether emergencies are handled" }
     ],
     scoping_notes: "If MLOps is mature, much of 8.1 is satisfied by existing tooling - the AIMS task is to recognise and document the alignment, not duplicate the process.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: the AI processes needed to meet AIMS requirements are planned, implemented and controlled, with documented information retained to show they ran as planned (clause 8.1). Outsourced AI processes - foundation-model APIs, annotation vendors - are identified and controlled, which 8.1 requires explicitly. An existing MLOps pipeline can be the evidence provided the AIMS criteria are mapped onto it.",
     maturity_ladder: {
       1: "AI processes informal; outsourced processes outside scope",
       2: "AI lifecycle documented; outsourced processes registered; unplanned changes reviewed",
@@ -517,6 +550,7 @@ module.exports = {
       { item: "Risk register updates traceable to assessments", what_it_tells_you: "Whether outputs land in the register" }
     ],
     scoping_notes: "An assessment can be a light-touch delta where nothing significant has changed (\"reviewed; no new risks; no changes to ratings\") - but the delta must be documented.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: the 6.1.2 process has actually been run, with results retained as documented information (clause 8.2). The interval is the organisation's to define and state - 'annually' is not the requirement, and a documented 18-month interval for a low-risk system with a rationale conforms. Trigger criteria for reassessment on significant change are written down and have been applied at least once.",
     maturity_ladder: {
       1: "Assessments performed only at certification; no recurring cycle",
       2: "Planned-interval assessments running; trigger criteria defined",
@@ -540,6 +574,7 @@ module.exports = {
       { item: "Residual risk acceptance records signed at the right level", what_it_tells_you: "Whether residual risk is owned" }
     ],
     scoping_notes: "Tie effectiveness to outcomes auditable from logs/data where possible (e.g., a fairness control's effectiveness = fairness metric within threshold) rather than to procedural compliance.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: the risk treatment plan has been implemented rather than only written, with results retained as documented information (clause 8.3). A tracker shows each action's status, with overdue items visibly managed rather than silently stale. Residual risk that has moved since the plan was approved has been re-accepted by the risk owner.",
     maturity_ladder: {
       1: "Treatment actions tracked informally; effectiveness not measured",
       2: "Tracker in place; control effectiveness measured for some controls",
@@ -563,6 +598,7 @@ module.exports = {
       { item: "Mitigation tracker showing closure", what_it_tells_you: "Whether assessment outputs land in change" }
     ],
     scoping_notes: "For systems with low risk and stable behaviour, an annual review is typical. For high-risk or rapidly-changing systems, the cadence is shorter.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a completed, dated, approved impact assessment for every in-scope AI system, retained as documented information (clause 8.4). The interval is the organisation's to define and state; the refresh triggers - retraining, change of intended use, a new deployment population - must be written down and must have been applied where one occurred. A 6.1.4 process with no assessment performed fails 8.4.",
     maturity_ladder: {
       1: "Assessments done at deployment only; no operational refresh",
       2: "Refresh triggers and cadence defined; some systems refreshed",
@@ -590,6 +626,7 @@ module.exports = {
       { item: "Records of threshold breaches and escalations", what_it_tells_you: "Whether monitoring drives action" }
     ],
     scoping_notes: "Drift, fairness, and robustness are the AI-specific metrics that frequently fall through the cracks - traditional ops monitoring covers availability and latency only.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a written determination of what is monitored and measured, by what method, when, by whom, and when results are analysed and evaluated (clause 9.1). At least one AI-specific measure beyond uptime and latency - drift, accuracy against a holdout, a fairness metric, override rate - with results retained and carried into management review.",
     maturity_ladder: {
       1: "Monitoring is ad-hoc; AIMS objectives not measured",
       2: "Monitoring plan documented; AIMS and AI-system metrics tracked",
@@ -601,7 +638,7 @@ module.exports = {
 
   'ai-clause-9.2': {
     purpose: "Conducts internal audits at planned intervals to determine whether the AIMS conforms to ISO 42001 and the organization's own requirements, and is effectively implemented and maintained.",
-    what_good_looks_like: "An audit programme runs annually covering all AIMS clauses and Annex A controls in scope. Auditors are competent, impartial (not auditing their own work), and follow a documented method. Findings are written as objective nonconformities or improvement opportunities. Corrective actions are tracked and effectiveness verified. Audit reports go to management review.",
+    what_good_looks_like: "What the clause requires: an audit programme exists, it runs at planned intervals that the organization itself defines, and the planning is risk-based - the clause sets no frequency. What certification bodies expect in practice: at least one full internal audit covering all AIMS clauses and all Annex A controls in scope, completed and closed out before the Stage 2 audit; most clients then settle on an annual programme, sometimes split across the year by area. Auditors are competent, impartial (not auditing their own work), and follow a documented method. Findings are written as objective nonconformities or improvement opportunities. Corrective actions are tracked and effectiveness verified. Audit reports go to management review.",
     common_pitfalls: [
       "Audit done by the AIMS owner - no impartiality",
       "Audit covers only documentation; no operational testing",
@@ -613,10 +650,11 @@ module.exports = {
       { item: "Audit reports with findings, owners, deadlines", what_it_tells_you: "Whether audits are productive" },
       { item: "Corrective action records with effectiveness verification", what_it_tells_you: "Whether the loop closes" }
     ],
-    scoping_notes: "External or rotated internal auditors satisfy impartiality. Auditing both the AIMS and the underlying AI systems is required - it's not enough to audit only the management system.",
+    scoping_notes: "External or rotated internal auditors satisfy impartiality. Auditing both the AIMS and the underlying AI systems is required - it's not enough to audit only the management system. On frequency, hold the two apart when you write the finding: \"no planned intervals defined\" or \"the programme was not followed\" is a nonconformity against 9.2; \"intervals defined as every 18 months\" is a conversation about whether the CB will accept it, not a nonconformity on its face.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented internal audit programme covering the AIMS clauses and the applicable Annex A controls over a defined cycle, audited by people who are competent and not auditing their own work (clause 9.2). The clause says planned intervals; in practice a certification body wants at least one completed audit before Stage 2. Findings have owners, due dates, and a closure trail.",
     maturity_ladder: {
       1: "Internal audit absent or limited to documentation review",
-      2: "Annual audit covering AIMS and AI systems; impartiality maintained",
+      2: "Programme defines planned intervals and is followed; one full pass over AIMS and AI systems completed; impartiality maintained",
       3: "Findings drive measurable improvements; effectiveness verified",
       4: "Audit programme risk-based; high-risk areas audited more frequently; audit quality reviewed"
     },
@@ -625,22 +663,25 @@ module.exports = {
 
   'ai-clause-9.3': {
     purpose: "Top management reviews the AIMS at planned intervals, considering the required inputs (audit results, performance, incidents, risk and impact assessment results, etc.) and produces outputs (decisions on improvement and changes).",
-    what_good_looks_like: "Management review runs at least annually, more often where the AIMS is young or change-intensive. The required inputs (9.3.2) are explicitly covered. Outputs are decisions, not summaries - resource changes, objective changes, scope changes, accepted residual risks. Minutes are signed and traceable to subsequent actions. The executive sponsor attends.",
+    what_good_looks_like: "What the clause requires: top management reviews the AIMS at planned intervals that the organization defines, and the review covers every input 9.3.2 lists. The clause sets no frequency. What certification bodies expect in practice: at least one complete management review, with all inputs covered and decisions recorded, before the Stage 2 audit; most clients then run an annual deep review, often with quarterly shorter sessions where the AIMS is young or change-intensive. The required inputs (9.3.2) are explicitly covered: status of actions from previous reviews; changes in external and internal issues; changes in the needs and expectations of interested parties; AIMS performance - nonconformities and corrective actions, monitoring and measurement results, audit results, fulfilment of AI objectives; adequacy of resources; effectiveness of the actions taken on AI risks and opportunities; and opportunities for continual improvement. AI system impact assessment results reach the table with their material findings. Outputs are decisions, not summaries - resource changes, objective changes, scope changes, accepted residual risks. Minutes are signed and traceable to subsequent actions. The executive sponsor attends.",
     common_pitfalls: [
       "Review held but inputs are summarised in slides without supporting evidence",
       "Output is \"continue current approach\" with no decisions recorded",
-      "Required inputs missing - especially impact-assessment results, which often aren't presented",
+      "Required inputs missing - especially impact-assessment results, which often aren't presented. Resource adequacy and the effectiveness of risk and opportunity actions are the next two most commonly skipped",
+      "Agenda does not follow 9.3.2, so coverage has to be reconstructed from the minutes and some inputs turn out never to have been raised",
       "Executive sponsor sends a delegate"
     ],
     evidence_to_look_for: [
-      { item: "Management-review schedule and agenda", what_it_tells_you: "Whether the review is planned" },
+      { item: "Management-review schedule and agenda, with the agenda structured on the 9.3.2 input list", what_it_tells_you: "Whether the review is planned and whether coverage is demonstrable rather than reconstructed" },
       { item: "Minutes covering all required inputs and showing decisions made", what_it_tells_you: "Whether the review meets the clause" },
+      { item: "The review pack itself - audit results, monitoring data, nonconformity status, objective status, impact assessment results", what_it_tells_you: "Whether top management reviewed evidence or a narrative" },
       { item: "Actions arising from review traceable to subsequent records", what_it_tells_you: "Whether the review is consequential" }
     ],
-    scoping_notes: "ISO 42001 9.3.2 lists specific inputs; a structured agenda covering each one is the easiest way to demonstrate coverage. Quarterly mini-reviews with an annual deep review is a common pattern.",
+    scoping_notes: "ISO 42001 9.3.2 lists specific inputs; a structured agenda covering each one is the easiest way to demonstrate coverage. Quarterly mini-reviews with an annual deep review is a common pattern, and a pattern we recommend - but the interval is the client's to define, so record the interval it chose and the rationale rather than asserting annual as a requirement. A missing input is a nonconformity against 9.3.2; an interval you would have set differently is advice.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: management-review minutes showing top management covered every input clause 9.3.2 lists - previous actions, context changes, interested-party needs, AIMS performance including nonconformities, monitoring and audit results, objective fulfilment, resource adequacy, effectiveness of actions on risks and impacts, improvement opportunities - and produced the dated decisions 9.3.3 requires. Top management is named in attendance.",
     maturity_ladder: {
-      1: "Review is a single annual meeting; minutes are sparse",
-      2: "Review covers all required inputs; outputs documented",
+      1: "Review happens irregularly with no defined interval; minutes are sparse",
+      2: "Interval defined and met; review covers all required inputs; outputs documented",
       3: "Review drives measurable changes; cadence proportional to AIMS maturity",
       4: "Review is the steering function of the AIMS - decisions on objectives, scope, investment originate here"
     },
@@ -664,6 +705,7 @@ module.exports = {
       { item: "Management-review records discussing improvement", what_it_tells_you: "Whether improvement is a governance topic" }
     ],
     scoping_notes: "Improvements need not be large. A series of small process improvements is more credible than annual large refactors.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: evidence the AIMS is being improved and not merely maintained (clause 10.1) - a short log of improvement opportunities drawn from audit findings, management review, monitoring and incidents, with two or three carried through to a landed outcome in the period. Small improvements count; an empty log behind a policy statement about improvement does not.",
     maturity_ladder: {
       1: "Improvements untracked; AIMS stable but stagnant",
       2: "Improvement log in place; some initiatives tracked to outcome",
@@ -687,6 +729,7 @@ module.exports = {
       { item: "Effectiveness verifications", what_it_tells_you: "Whether the loop closes" }
     ],
     scoping_notes: "Customer complaints, regulator findings, and incidents from monitoring all flow into the NC process. The log doesn't need to be heavy; what matters is that every NC has a documented life cycle.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a nonconformity log in which each entry records the reaction, the evaluation of cause, the corrective action, and a later review of whether it worked (clause 10.2). At least one real nonconformity has been through the full cycle - an empty log invites the auditor to find the ones that went unrecorded. 'Human error' as a cause will be challenged.",
     maturity_ladder: {
       1: "NCs handled informally; root cause not analysed",
       2: "NC log in place; root cause analysis done; corrective actions tracked",
@@ -702,9 +745,9 @@ module.exports = {
   // A.2 Policies related to AI
   'ai-annex-a-2-2': {
     purpose: "The most-asked-about Annex A control. Forces the AI policy to exist as a written, approved artefact - not a deck, not a webpage. Without it, every other Annex A.2 control has nothing to align to.",
-    what_good_looks_like: "A 1-3 page AI policy document, dated, version-controlled, approved by named top management. It commits the organization to responsible-AI principles (typically fairness, transparency, accountability, safety, oversight, privacy, security). It states what the organization will not do (prohibited uses - e.g., social scoring, mass surveillance, weapons applications, fully autonomous decisions affecting individuals' fundamental rights). It defines the scope of activities covered (develop / provide / deploy / use). It is communicated to staff and made externally available where appropriate.",
+    what_good_looks_like: "A 1-3 page AI policy document, dated, version-controlled, approved by named top management. It commits the organization to responsible-AI principles (typically fairness, transparency, accountability, safety, oversight, privacy, security). VA strongly advises it also state what the organization will not do (prohibited uses - e.g., social scoring, mass surveillance, weapons applications, fully autonomous decisions affecting individuals' fundamental rights); Annex B guidance for A.2.2 points at boundaries on use, and a policy without them leaves staff unable to tell what is off-limits - but a policy that omits them is not by itself a nonconformity. It defines the scope of activities covered (develop / provide / deploy / use). It is communicated to staff and made externally available where appropriate.",
     common_pitfalls: [
-      "Policy is a list of principles with no prohibited uses",
+      "Policy is a list of principles with no prohibited or restricted uses - raise it as advice, not as a nonconformity against A.2.2",
       "Approved at director level when board approval was required by internal governance",
       "Doesn't reference the organization's actual AI footprint or sector",
       "Published externally before internal alignment - PR moves ahead of governance"
@@ -715,10 +758,11 @@ module.exports = {
       { item: "Public-facing version (where relevant) consistent with internal", what_it_tells_you: "Whether external commitments match reality" }
     ],
     scoping_notes: "Some organizations bundle the policy into a Code of Conduct or a broader Responsible Technology policy. That's fine if the AI-specific section meets the requirements. A standalone AI policy is usually clearer.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a written AI policy approved at the appropriate management level, dated and versioned, stating which AI activities the organisation undertakes (develop, provide, deploy, use) and its responsible-AI commitments, and communicated to the staff it binds (A.2.2). An explicit prohibited-use list is Annex B implementation guidance rather than a pass condition - VA advises it, but its absence alone is not a finding.",
     maturity_ladder: {
       1: "No AI policy or only a generic statement of principles",
-      2: "AI policy approved, dated, communicated; covers principles and prohibited uses",
-      3: "Policy is the explicit reference for AI decisions; staff cite it; reviewed annually",
+      2: "AI policy approved, dated, communicated; covers responsible-AI principles and the activities in scope (develop / provide / deploy / use)",
+      3: "Prohibited and restricted uses stated explicitly (VA advice, per Annex B guidance for A.2.2); policy is the explicit reference for AI decisions; staff cite it; reviewed on the defined cadence",
       4: "Policy reflects lessons from incidents and reviews; effectiveness measured (decisions deferred / escalated as a result)"
     },
     related_items: ['ai-clause-5.2', 'ai-annex-a-2-3', 'ai-annex-a-2-4']
@@ -738,6 +782,7 @@ module.exports = {
       { item: "Updated HR / ethics / security policies addressing AI", what_it_tells_you: "Whether related policies have absorbed AI considerations" }
     ],
     scoping_notes: "This control is often weak in organizations that built the AIMS as an isolated initiative. The fix is administrative: a workshop with policy owners to identify and resolve overlaps.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented check that the AI policy sits consistently alongside the organisation's other policies - information security, privacy, risk, HR, procurement - with any conflict either resolved or recorded with a decision (A.2.3). A one-page cross-reference is enough. What fails is an AI policy that contradicts the acceptable-use or procurement policy with nobody having noticed.",
     maturity_ladder: {
       1: "Alignment not assessed",
       2: "Cross-reference exists; obvious conflicts resolved",
@@ -761,6 +806,7 @@ module.exports = {
       { item: "Version history of the policy", what_it_tells_you: "Whether reviews drive change" }
     ],
     scoping_notes: "Tie the review to management review (9.3) as an input - this keeps it in the governance cycle and ensures a leadership decision.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a stated review interval for the AI policy plus the triggers that force an off-cycle review, and at least one recorded review carrying a date, a reviewer, and an outcome (A.2.4). The interval is the organisation's to set - A.2.4 says planned intervals, not annually - but a policy whose own stated next-review date has passed is a finding on its face.",
     maturity_ladder: {
       1: "Reviews not performed",
       2: "Reviews performed at planned interval; recorded",
@@ -786,6 +832,7 @@ module.exports = {
       { item: "Recent decisions (approval, suspension, escalation) traceable to a named role", what_it_tells_you: "Whether the role structure is used" }
     ],
     scoping_notes: "In small teams one person can hold several roles - what matters is that segregation requirements are observed (the person who approves the deployment can't be the same person who developed it for high-risk systems).",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: documented AI roles and responsibilities covering development, deployment, operation, monitoring, oversight and incident handling, with a named owner per in-scope AI system and an explicit holder of the deployment go/no-go decision (A.3.2), communicated to the people holding them. Several roles in one person is acceptable provided segregation on deployment approval holds.",
     maturity_ladder: {
       1: "Roles informal; nobody owns AI systems explicitly",
       2: "Model ownership defined; key lifecycle roles named",
@@ -810,6 +857,7 @@ module.exports = {
       { item: "Sample of reports received and how they were handled", what_it_tells_you: "Whether reports get processed" }
     ],
     scoping_notes: "Existing whistleblower channels usually suffice with a small addition (scope explicitly includes AI ethical concerns). New channels rarely outperform extended existing ones.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a channel through which staff and external parties can raise concerns about the organisation's AI, with an anonymous route, a documented triage path, and protection from retaliation, communicated to the people expected to use it (A.3.3). Extending the existing whistleblower channel to name AI concerns in scope is sufficient. A channel nobody has been told about does not count.",
     maturity_ladder: {
       1: "No channel scoped to AI concerns",
       2: "Channel documented; anonymity and anti-retaliation in place; communicated",
@@ -834,6 +882,7 @@ module.exports = {
       { item: "Inventory update records", what_it_tells_you: "Whether the inventory stays current" }
     ],
     scoping_notes: "Tools that already exist - model registries, MLOps platforms - can serve as the inventory if they have the right fields and are kept current. A separate spreadsheet is often the worst option.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: an AI system inventory with one entry per in-scope system, recording the data, tooling, computing and human resources it depends on, updated when a system is added, changed or retired (A.4.2). Inventory identifiers are used by the risk assessment, the impact assessment and the SoA so an auditor can join them up. An existing model registry can serve as the inventory.",
     maturity_ladder: {
       1: "Inventory absent or out of date",
       2: "Inventory exists with key resources per system; updated on change",
@@ -858,6 +907,7 @@ module.exports = {
       { item: "Bias and limitation notes", what_it_tells_you: "Whether the datasheet is honest" }
     ],
     scoping_notes: "Datasheets for Datasets (Gebru et al.) and similar templates are well-established starting points. Adopt one and stick to it.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: for each in-scope AI system, a record of every dataset used in training and in operation giving the source, the licence or consent basis, the date acquired, and the known limitations (A.4.3). For a system built on a third-party model, that model's own data terms stand in for per-record provenance. A system whose training data is undocumented will not pass.",
     maturity_ladder: {
       1: "No data documentation beyond informal notes",
       2: "Datasheets exist per system; cover provenance, licensing, schema",
@@ -881,6 +931,7 @@ module.exports = {
       { item: "Licence-obligation tracking", what_it_tells_you: "Whether commercial obligations are managed" }
     ],
     scoping_notes: "SBOM tooling (e.g., CycloneDX-AI, AIBOM) is emerging - useful where toolchains are complex. For simple stacks a written record is fine.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a record per in-scope AI system of the algorithms, models, frameworks and libraries it uses with versions pinned, plus any commercial AI service it calls, and the licence obligations each carries (A.4.4). A written list is sufficient at this level - no AI-BOM tooling is required.",
     maturity_ladder: {
       1: "Tooling not documented",
       2: "Tooling listed per system; versions pinned",
@@ -904,6 +955,7 @@ module.exports = {
       { item: "Environmental footprint records for material systems", what_it_tells_you: "Whether the org has visibility into AI's environmental cost" }
     ],
     scoping_notes: "For low-compute systems (small classifiers, traditional ML) the environmental footprint is usually negligible and can be noted as such. For LLM-based systems, especially training, it can be material.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a record per in-scope AI system of the computing, storage and networking resources used for training and for inference, and the constraints they impose (A.4.5). Where compute is light, recording that the environmental footprint is immaterial with a one-line reason is a conforming answer; saying nothing about it is not.",
     maturity_ladder: {
       1: "Infrastructure documented at team or org level only",
       2: "Per-system documentation; constraints recorded",
@@ -927,6 +979,7 @@ module.exports = {
       { item: "Cross-reference to competence records (7.2)", what_it_tells_you: "Whether competence and roles are connected" }
     ],
     scoping_notes: "Annotation vendors that process customer data are also third parties under data-protection law - coordinate documentation with privacy.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a record per in-scope AI system of the people and roles involved across its lifecycle and the competences they depend on, including reliance on external human resources such as annotation vendors or contractors (A.4.6). This is a resource record, not a training record - pointing only at the clause 7.2 competence matrix leaves A.4.6 unanswered.",
     maturity_ladder: {
       1: "People not documented per system",
       2: "Per-system human resources catalogued; external dependencies included",
@@ -951,6 +1004,7 @@ module.exports = {
       { item: "Linkage to 6.1.3 (treatment) and 8.4 (refresh)", what_it_tells_you: "Whether the process is integrated" }
     ],
     scoping_notes: "Public frameworks (NIST AI RMF, FRIA, AIDA AIA) are good starting points - adopt-and-adapt rather than build from scratch.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented, approved, version-controlled impact-assessment process stating when an assessment is triggered, who performs and approves it, what it must cover, how its depth scales with the system's risk, and how its output reaches risk treatment and operations (A.5.2). Adapting a public framework is fine. The process document alone answers A.5.2; the assessments themselves sit at A.5.3.",
     maturity_ladder: {
       1: "No methodology; assessments are ad-hoc",
       2: "Methodology documented; covers triggers, scope, outputs, refresh",
@@ -974,6 +1028,7 @@ module.exports = {
       { item: "Approval at appropriate level", what_it_tells_you: "Whether outcomes are owned" }
     ],
     scoping_notes: "Assessment narratives that reference specific affected groups (e.g., \"applicants under age 25 may be disadvantaged due to thin credit files\") rather than generic categories (\"users\") are markedly stronger.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a written impact assessment on file for each in-scope AI system, dated and approved, recording the intended use, the individuals and groups affected, the potential adverse effects, the mitigations, and the residual impact (A.5.3). One current document per system. An assessment on the flagship system only, with the rest listed as planned, is the usual shortfall.",
     maturity_ladder: {
       1: "Assessments missing or template-only",
       2: "Documented assessments per system; cover required elements; approved",
@@ -998,6 +1053,7 @@ module.exports = {
       { item: "Explicit consideration of vulnerable populations", what_it_tells_you: "Whether the most-affected are visible" }
     ],
     scoping_notes: "Where the AI system's outputs affect individuals without their interaction (e.g., risk scoring that influences a decision), the affected individual is the data subject of the score, not just the human decision-maker who reads it.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: the impact assessment addresses, per AI system, how the system's outputs affect individuals and groups of individuals - fairness, transparency, autonomy, safety, privacy - and names which vulnerable groups sit in the affected population (A.5.4). A narrative answer passes at the floor; where the system decides about people and disaggregated outcome data exists, an auditor will expect it used.",
     maturity_ladder: {
       1: "Individual / group impact not addressed specifically",
       2: "Addressed in assessment; generic narrative",
@@ -1021,6 +1077,7 @@ module.exports = {
       { item: "Foresight or scenario analysis for systems with broad reach", what_it_tells_you: "Whether second-order effects are considered" }
     ],
     scoping_notes: "Public-facing systems and high-volume systems benefit from explicit foresight techniques (futures wheels, scenario planning). Internal-only systems have limited societal reach and a short paragraph usually suffices.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a societal-impact section in the impact assessment for each AI system covering the dimensions that apply - economic, environmental, democratic, health, cultural, ethical (A.5.5). For an internal, low-reach system a short paragraph explaining why societal reach is limited is a conforming answer. Omitting the section altogether is not, even for a small system.",
     maturity_ladder: {
       1: "Societal impact not addressed",
       2: "Addressed in assessment; narrative-level",
@@ -1045,6 +1102,7 @@ module.exports = {
       { item: "Measurement of objective achievement", what_it_tells_you: "Whether objectives are operationalised" }
     ],
     scoping_notes: "Distinct from Clause 6.2 AI objectives (which are AIMS-level). A.6.1.2 objectives are for the systems themselves, not the management system.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: documented objectives for the responsible development of AI systems - fairness, transparency, robustness, security, privacy, accountability, safety as applicable - expressed as requirements a design review can test against, and actually cited in a design review or acceptance record (A.6.1.2). These are system-level objectives, distinct from the AIMS objectives at clause 6.2; reusing the 6.2 list verbatim does not answer A.6.1.2.",
     maturity_ladder: {
       1: "No objectives translated to design inputs",
       2: "Objectives documented; design reviews reference them",
@@ -1069,6 +1127,7 @@ module.exports = {
       { item: "Risk-proportional approvals", what_it_tells_you: "Whether the process is calibrated" }
     ],
     scoping_notes: "Stitching the AIMS gates into the existing MLOps / SDLC pipeline is the right pattern - duplicating processes leads to drift.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented development process for AI systems naming the lifecycle stages, the gate between each, who approves at each gate, and the rules governing training data (A.6.1.3). One sampled recent system shows the gates were passed with the approvals on record. Embedding the gates in the existing SDLC or MLOps pipeline is the expected pattern.",
     maturity_ladder: {
       1: "No documented process; delivery is ad-hoc",
       2: "Process documented; gates and approvals in place",
@@ -1092,6 +1151,7 @@ module.exports = {
       { item: "Traceability matrix to test cases", what_it_tells_you: "Whether requirements are verifiable" }
     ],
     scoping_notes: "Where the AI is part of a larger product, AI-specific requirements should be a section of the product requirements document, not a separate stream.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented requirements specification per in-scope AI system covering functional and non-functional requirements plus the responsible-AI requirements that apply - fairness thresholds, explainability, human oversight, deployment constraints (A.6.2.2) - signed off at an appropriate level. Accuracy and latency targets with no responsible-AI requirements beside them is the usual gap.",
     maturity_ladder: {
       1: "Requirements informal or only functional",
       2: "Documented requirements covering all dimensions",
@@ -1115,6 +1175,7 @@ module.exports = {
       { item: "Traceability from design choices to requirements", what_it_tells_you: "Whether design serves requirements" }
     ],
     scoping_notes: "A model card (Hugging Face / Google template) plus an architecture document together usually satisfy this for typical systems.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a design and development record per in-scope AI system covering the architecture, the modelling choices, and the rationale for the significant trade-offs taken - accuracy against interpretability, accuracy against fairness, latency against accuracy (A.6.2.3). A model card plus an architecture note is enough. Code and notebooks with no written decision record are not.",
     maturity_ladder: {
       1: "Design lives in notebooks; no canonical document",
       2: "Design document per system; covers architecture, modelling choices, rationale",
@@ -1140,6 +1201,7 @@ module.exports = {
       { item: "Re-validation records after retraining", what_it_tells_you: "Whether change triggers re-test" }
     ],
     scoping_notes: "For high-risk systems, independent / red-team testing materially strengthens this control. For low-risk systems, automated tests in the pipeline are usually sufficient.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented verification and validation approach per in-scope AI system with stated acceptance thresholds, the test data used, and results on record showing the thresholds were met before deployment (A.6.2.4). Testing reaches beyond accuracy - at minimum fairness or robustness where the system affects people. Re-validation on retraining is defined and has been done where retraining occurred.",
     maturity_ladder: {
       1: "Validation = held-out accuracy; nothing else tested",
       2: "Multi-dimensional test plan; acceptance thresholds defined",
@@ -1163,6 +1225,7 @@ module.exports = {
       { item: "Tested rollback procedure", what_it_tells_you: "Whether rollback works" }
     ],
     scoping_notes: "MLOps platforms typically support staged rollout natively. Use it.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: documented release criteria and a deployment plan per in-scope AI system, including the rollback route and who authorises the release (A.6.2.5). One sampled deployment shows the criteria were checked and the authorisation recorded. Staged or canary rollout is advisable for high-impact systems but is not itself the pass condition - the recorded gate is.",
     maturity_ladder: {
       1: "Deployment is uncontrolled",
       2: "Release criteria and plan documented; gates applied",
@@ -1187,6 +1250,7 @@ module.exports = {
       { item: "Recent records of monitoring-driven action (retraining, suspension, fix)", what_it_tells_you: "Whether monitoring drives change" }
     ],
     scoping_notes: "Monitoring stack should be in place before deployment, not after - retrofitting monitoring is expensive and gappy.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: each deployed in-scope AI system is monitored on at least one AI-specific dimension - performance against a baseline, drift, fairness, or security events - with a threshold, an alert route, and a named person who acts (A.6.2.6), plus a written response routine covering degradation and suspension. Infrastructure monitoring alone does not satisfy A.6.2.6.",
     maturity_ladder: {
       1: "Monitoring is availability only",
       2: "AI-specific metrics monitored; alerts in place",
@@ -1210,6 +1274,7 @@ module.exports = {
       { item: "Update history showing maintenance", what_it_tells_you: "Whether documentation is alive" }
     ],
     scoping_notes: "Hugging Face model card schema is well-established; useful starting point. Internal technical reports can be lighter for low-risk systems.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: technical documentation per in-scope AI system sufficient for the audiences that need it, with those audiences named (A.6.2.7). At the floor that is one document covering intended use, capabilities and limits, a training and evaluation summary, and deployment detail, kept current with the version in production. Documentation describing a version other than the deployed one is a finding.",
     maturity_ladder: {
       1: "Documentation absent or one undifferentiated file",
       2: "Layered documentation per system; covers required audiences",
@@ -1234,6 +1299,7 @@ module.exports = {
       { item: "Retention and access controls", what_it_tells_you: "Whether logs are governed" }
     ],
     scoping_notes: "Coordinate with overall security logging - AI logs are a slice of the broader observability stack. Privacy review of what's logged is essential for systems handling personal data.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a written determination per in-scope AI system of which events the system records, where the logs are held, for how long, and who can read them (A.6.2.8). Logs capture enough to reconstruct a decision - an input reference, the output, and any human override. Where logs carry personal data, the redaction or minimisation applied is stated.",
     maturity_ladder: {
       1: "AI-specific events not logged",
       2: "Logging specification per system; covers decisions, overrides, performance",
@@ -1258,6 +1324,7 @@ module.exports = {
       { item: "Cross-reference to privacy and security controls", what_it_tells_you: "Whether integration is real" }
     ],
     scoping_notes: "Where the organization has mature data governance, the AI procedure is a focused extension - additional concerns (bias, drift, lineage at model granularity) on top of the existing structure.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented data-management process for AI covering acquisition through disposal and addressing privacy, security, representativeness, accuracy and integrity, with a named owner (A.7.2). Extending existing data governance with the AI-specific concerns is the expected route. A process that covers security and privacy but says nothing about representativeness leaves A.7.2 half answered.",
     maturity_ladder: {
       1: "No AI-specific data procedure",
       2: "Procedure in place; covers required dimensions",
@@ -1282,6 +1349,7 @@ module.exports = {
       { item: "Selection criteria documented", what_it_tells_you: "Whether the choice was deliberate" }
     ],
     scoping_notes: "Foundation models trained on web-scale data are usually exempt from per-record records but the licence terms of the model itself and any fine-tuning data must be tracked.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: an acquisition record per dataset giving the source, the date, the licence or consent basis for using it this way, why this data was selected, and the biases or limitations the source declares (A.7.3). The licence basis is the item that costs clients contracts - a scraped or purchased dataset with no recorded right to use it for training should not pass.",
     maturity_ladder: {
       1: "Acquisition documented informally or not at all",
       2: "Per-dataset records covering source, licence, selection",
@@ -1305,6 +1373,7 @@ module.exports = {
       { item: "Remediation records for identified issues", what_it_tells_you: "Whether issues are addressed" }
     ],
     scoping_notes: "Automated data-quality tools (Great Expectations, Soda, etc.) work well for repeatable checks. Representativeness usually needs a domain-specific analysis.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: documented data-quality criteria - accuracy, completeness, currency, representativeness, consistency as applicable - with evidence they were checked for each dataset in use (A.7.4). Representativeness against the deployment population is checked for systems that decide about people. Criteria may be proportional to the system's risk, but 'the data looked fine' is not a criterion.",
     maturity_ladder: {
       1: "No quality criteria",
       2: "Criteria defined; checks run at acquisition",
@@ -1328,6 +1397,7 @@ module.exports = {
       { item: "Transformation records", what_it_tells_you: "Whether the data pipeline is auditable" }
     ],
     scoping_notes: "ML platforms (MLflow, Weights & Biases, SageMaker) usually capture lineage natively. Use it; don't build a separate registry.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a provenance record that lets an auditor start from a deployed model version and identify the dataset versions it was trained on and the transformations applied (A.7.5). Native lineage in an ML platform is ideal; a manually maintained mapping passes if it is complete. A model in production whose training data cannot be identified is a finding.",
     maturity_ladder: {
       1: "No lineage tracking",
       2: "Model version to dataset version mapping recorded",
@@ -1352,6 +1422,7 @@ module.exports = {
       { item: "Anonymisation validation results", what_it_tells_you: "Whether de-identification is verified" }
     ],
     scoping_notes: "Synthetic data generation - if used - falls under preparation and needs the same documentation: generator, parameters, validation that synthetic distribution matches intended.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a record per dataset of the preparation applied - cleaning, labelling, augmentation, anonymisation - the rationale for each technique chosen, and its effect on the dataset (A.7.6). Labelling protocols are written down where humans labelled. Anonymisation relied on as a privacy control has been tested against re-identification rather than asserted.",
     maturity_ladder: {
       1: "Preparation undocumented",
       2: "Documented; rationale included; impact noted",
@@ -1377,6 +1448,7 @@ module.exports = {
       { item: "Working feedback channel linked from documentation", what_it_tells_you: "Whether users have a path" }
     ],
     scoping_notes: "For internal-only AI tools, the user is the employee using the tool. For customer-facing AI, it's the end customer. Adapt accordingly.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: plain-language documentation available to the people who actually use each in-scope AI system, stating what it does, its intended use, its known limits and failure modes, how human oversight applies, and who to contact with a concern (A.8.2). For an internal tool the user is the employee. A technical model card handed to a non-technical user does not satisfy A.8.2.",
     maturity_ladder: {
       1: "No user-facing documentation",
       2: "Documentation exists; covers required elements in plain language",
@@ -1400,6 +1472,7 @@ module.exports = {
       { item: "Categorised log of reports and their resolutions", what_it_tells_you: "Whether the data is mined for patterns" }
     ],
     scoping_notes: "Where the AI is embedded in a larger product, the channel can ride on the existing product feedback - what matters is that AI-relevant reports are recognised and routed.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a route by which parties outside the organisation can report a problem with an AI system, discoverable by the people who would need it, with a documented triage and response path (A.8.3). Riding on an existing support or feedback channel is fine provided AI-related reports are recognised and routed. Reports that arrive and go nowhere fail the control.",
     maturity_ladder: {
       1: "No channel for external reporting",
       2: "Channel exists; submissions triaged",
@@ -1424,6 +1497,7 @@ module.exports = {
       { item: "Sample of pre-approved templates", what_it_tells_you: "Whether response time will be short" }
     ],
     scoping_notes: "Coordinate with overall incident response, privacy breach notification, and crisis comms - the AI section is an extension, not a parallel plan.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a plan written before the event for communicating AI-related incidents - which incident types reach which audiences, within what deadline, using what message, released by whom (A.8.4) - naming the regulatory and contractual notification deadlines that apply. A general incident-response plan with no AI-specific audiences or triggers does not answer A.8.4.",
     maturity_ladder: {
       1: "No AI-specific incident comms",
       2: "Plan documented; templates and authorities defined",
@@ -1447,6 +1521,7 @@ module.exports = {
       { item: "Approval records per disclosure", what_it_tells_you: "Whether disclosures are governed" }
     ],
     scoping_notes: "Public AI registers are increasingly required (EU AI Act high-risk obligations) or expected by sector. Setting up the register early - even before required - simplifies later compliance.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented decision on what the organisation tells interested parties about its AI activities, separating what it must disclose from what it chooses to, with an owner and a schedule for each (A.8.5), and mandatory disclosures that are due actually made. A decision to disclose little, recorded with a reason, is a conforming answer; no decision at all is not.",
     maturity_ladder: {
       1: "Disclosures ad hoc; no strategy",
       2: "Strategy documented; mandatory disclosures on schedule",
@@ -1472,6 +1547,7 @@ module.exports = {
       { item: "Override and escalation log", what_it_tells_you: "Whether use is observable" }
     ],
     scoping_notes: "For high-stakes systems (medical, legal, hiring), use procedures and human oversight typically need to be specific and well-trained. For low-stakes systems, lighter guidance is fine.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a documented procedure for using each deployed in-scope AI system - who may use it, for what, how much weight to give its output, when to escalate, and when to stop using it (A.9.2) - plus evidence the users were told. Escalations and overrides are recorded. For a high-stakes system an auditor will interview a user against the procedure.",
     maturity_ladder: {
       1: "No use procedure",
       2: "Procedure per system; user training in place",
@@ -1495,6 +1571,7 @@ module.exports = {
       { item: "Monitoring of objective achievement", what_it_tells_you: "Whether objectives drive behaviour" }
     ],
     scoping_notes: "Use objectives often map to KPIs the team is already tracking - identifying that mapping is the easiest path.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: documented objectives for responsible use per AI system or system class that an operator can actually apply - a human sign-off on high-impact decisions, an error-rate ceiling, a disclosure on customer-facing output - communicated to the users and monitored (A.9.3). These are operational reference points, distinct from the development objectives at A.6.1.2.",
     maturity_ladder: {
       1: "No use objectives",
       2: "Objectives documented; communicated",
@@ -1518,6 +1595,7 @@ module.exports = {
       { item: "Monitoring or audit records of actual use patterns", what_it_tells_you: "Whether actual use is observable" }
     ],
     scoping_notes: "Foundation models (LLMs, etc.) are inherently general-purpose - the intended-use control is on how the organization deploys the foundation model in a specific application, not on the underlying model.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: a written statement of intended use per in-scope AI system with the out-of-scope uses named, held where users will see it, and a rule that extending the use requires fresh approval and a fresh impact assessment (A.9.4). For a general-purpose model the control sits on the organisation's application of it, not on the model.",
     maturity_ladder: {
       1: "Intended use not specified",
       2: "Statement per system; expansions require approval",
@@ -1542,6 +1620,7 @@ module.exports = {
       { item: "Review records on relationship or AI changes", what_it_tells_you: "Whether allocation stays current" }
     ],
     scoping_notes: "EU AI Act introduces specific allocations between providers, deployers, and importers - contracts in scope of EU AI Act need to reflect those.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: for each third party in the AI supply chain, a written allocation of who is responsible for what - data supplied, model behaviour, monitoring, incident notification, cooperation with assessments and regulators - carried in the agreement or an appendix to it (A.10.2), matching the role determination made at clause 4.1. A supplier relationship with no documented allocation is the common gap.",
     maturity_ladder: {
       1: "Allocation not documented",
       2: "Matrix per relationship; covers key responsibilities",
@@ -1566,6 +1645,7 @@ module.exports = {
       { item: "Ongoing oversight records (model-change reviews, transparency report reviews)", what_it_tells_you: "Whether oversight is alive" }
     ],
     scoping_notes: "For foundation-model APIs, oversight requires monitoring the vendor's release notes and model versions - the model behind \"GPT-4\" changes more often than the name suggests.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: AI suppliers are identified as such in the supplier register, onboarding diligence covers their responsible-AI controls in proportion to the risk they carry, and contracts include the AIMS-relevant terms - change notification, incident notification, data handling, cooperation (A.10.3). For a foundation-model API, the duty of watching the vendor's model and terms changes is assigned to someone.",
     maturity_ladder: {
       1: "AI suppliers not differentiated; generic vendor process applied",
       2: "AI suppliers flagged; AIMS clauses in contracts; onboarding diligence performed",
@@ -1589,6 +1669,7 @@ module.exports = {
       { item: "Customer feedback / complaint analysis", what_it_tells_you: "Whether feedback drives change" }
     ],
     scoping_notes: "For B2B AI, customer obligations cascade - the obligations the organization owes its customers, plus the obligations the customer must be able to meet to their own users.",
+    minimum_certifiable: "Smallest version that will still pass Stage 2: customers of the organisation's AI receive what they need to keep their use inside the intended use, foreseeable misuse has been considered with at least one mitigation in place, and customer feedback on the AI reaches someone who acts on it (A.10.4). Where the customer is another organisation, what they must pass on to their own users is identified.",
     maturity_ladder: {
       1: "Customer-facing obligations not addressed",
       2: "Documentation and basic mitigations in place",

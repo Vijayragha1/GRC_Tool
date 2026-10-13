@@ -21,6 +21,7 @@ const uploadSecurity = require('../lib/upload-security');
 const { requestPolicy, requestCapabilities, clientWorkPolicy } = require('../lib/client-request-policy');
 const notifications = require('../lib/notification-delivery');
 const { listWork } = require('../lib/work-projection');
+const { createReportVisibility } = require('../lib/iso42001-client-publication');
 const drafts = require('../lib/form-drafts');
 const { withToast, auditCtx } = require('../lib/http-helpers');
 const { todayFor } = require('../lib/dates');
@@ -39,6 +40,10 @@ const MAX_COMMENT = 8000;
 const TPRM_CLIENT_DECISIONS = new Set(['onboard', 'onboard_with_conditions', 'do_not_onboard', 'defer_request_information']);
 const TPRM_POSITIVE_DECISIONS = new Set(['onboard', 'onboard_with_conditions']);
 const TPRM_NEGATIVE_RECOMMENDATIONS = new Set(['do_not_recommend', 'insufficient_information']);
+
+// Thrown inside a share transaction when the release notice reached nobody, so
+// the share rolls back instead of reporting a hand-off the client never got.
+class UndeliverableShare extends Error {}
 
 let tprmDomainCache;
 function tprmDomain() {
@@ -107,6 +112,10 @@ function register(app, deps) {
   }
 
   function deliveryVisibleToActor(req, row, clientPreview = false) {
+    if (req.user.user_type !== 'firm' || clientPreview) {
+      const reportVisible = req.aimsReportVisible || (req.aimsReportVisible = createReportVisibility(db, req.workspace));
+      if (!reportVisible(row)) return false;
+    }
     const assignedToClient = row.owner_id != null || row.approver_id != null;
     if (req.user.user_type === 'firm') return clientPreview ? assignedToClient : true;
     if (isContributor(req)) {
@@ -670,7 +679,7 @@ function register(app, deps) {
 
   function reconcileDeliveryCompletion(req, context = {}) {
     const frameworks = Array.isArray(req.workspace.frameworks) ? req.workspace.frameworks : [];
-    if (!frameworks.includes('iso27001')) return;
+    if (!frameworks.some(code => ['iso27001', 'iso42001'].includes(code))) return;
     if (!db.prepare('SELECT 1 FROM engagement_delivery_plans WHERE workspace_id=?').get(req.workspace.id)) return;
     delivery.reconcileCompletionState(db, req.workspace, req.user.id, context);
     delivery.syncOutcomePlanStatus(db, req.workspace, req.user.id);
@@ -756,16 +765,20 @@ function register(app, deps) {
       fields.metadata ? JSON.stringify(fields.metadata) : null
     );
     const row = db.prepare('SELECT * FROM client_requests WHERE id=? AND workspace_id=?').get(requestId,req.workspace.id);
+    // `notified` stays null when the event is not meant to tell anyone (an
+    // unreleased request, an internal note). An empty array means it tried and
+    // no recipient was reachable, which callers that claim delivery must check.
+    let notified = null;
     if (row && row.released_at && ['created','assigned','commented','status_changed','target_updated'].includes(eventType) && !fields.metadata?.internal) {
       const recipient = eventType === 'commented' ? (req.user.user_type === 'client' ? row.consultant_owner_id || row.created_by : row.assignee_id)
         : fields.toStatus === 'submitted' ? row.consultant_owner_id || row.created_by : row.assignee_id;
       const recipientIds = recipient ? [recipient] : clientMembers(req).filter(m=>['client_owner','isms_manager'].includes(rbac.normalizeRole(m.role))).map(m=>m.id);
       const prefix = ({created:'New request',assigned:'Request assigned',commented:'New message',target_updated:'Request shared'})[eventType] || `Request ${clientStatus(fields.toStatus)}`;
-      notifications.enqueue(db,{workspaceId:req.workspace.id,actorId:req.user.id,recipientIds,eventKey:`client_request_event:${savedEvent.lastInsertRowid}`,
+      notified = notifications.enqueue(db,{workspaceId:req.workspace.id,actorId:req.user.id,recipientIds,eventKey:`client_request_event:${savedEvent.lastInsertRowid}`,
         sourceType:'request',sourceId:requestId,title:`${prefix}: ${row.title}`,body:fields.note || null,
         link:`/workspaces/${req.workspace.id}/client-portal/requests/${requestId}`,severity:fields.toStatus==='changes_requested'?'warning':'info'});
     }
-    return Number(savedEvent.lastInsertRowid);
+    return { eventId: Number(savedEvent.lastInsertRowid), notified };
   }
 
   function notify(userId, req, title, body, link, severity = 'info', eventKey) {
@@ -924,7 +937,7 @@ function register(app, deps) {
       }
 
       const workspaceFrameworks = Array.isArray(req.workspace.frameworks) ? req.workspace.frameworks : [];
-      const deliveryProjection = workspaceFrameworks.includes('iso27001')
+      const deliveryProjection = workspaceFrameworks.some(code => ['iso27001', 'iso42001'].includes(code))
         ? delivery.getProjection(db, req.workspace, portalActorId, { ensure: false })
         : null;
       let deliveryWork = [];
@@ -1131,12 +1144,28 @@ function register(app, deps) {
     if (req.user.user_type !== 'firm') return res.status(403).send('Only the consultancy can share requests.');
     const row = loadRequest(req,req.params.id);
     if (!row) return res.status(404).send('Request not found.');
-    const result = db.transaction(() => {
-      const result = db.prepare(`UPDATE client_requests SET released_at=COALESCE(released_at,CURRENT_TIMESTAMP),released_by=COALESCE(released_by,?),version=version+1
-        WHERE workspace_id=? AND id=? AND version=?`).run(req.user.id,req.workspace.id,row.id,Number(req.body.version));
-      if (result.changes) insertEvent(req,row.id,'target_updated',{note:'Shared with the client team.'});
-      return result;
-    })();
+    // Sharing is only real when someone on the client team is actually told.
+    // `insertEvent` queues the notice through the outbox, which authorises each
+    // recipient against the released request, so an empty result means no
+    // client user would be notified or could even open it. Roll the share back
+    // and say what to fix rather than report a hand-off that never happened.
+    let result;
+    try {
+      result = db.transaction(() => {
+        const result = db.prepare(`UPDATE client_requests SET released_at=COALESCE(released_at,CURRENT_TIMESTAMP),released_by=COALESCE(released_by,?),version=version+1
+          WHERE workspace_id=? AND id=? AND version=?`).run(req.user.id,req.workspace.id,row.id,Number(req.body.version));
+        if (result.changes) {
+          const shared = insertEvent(req,row.id,'target_updated',{note:'Shared with the client team.'});
+          if (!shared.notified || !shared.notified.length) throw new UndeliverableShare();
+        }
+        return result;
+      })();
+    } catch (error) {
+      if (!(error instanceof UndeliverableShare)) throw error;
+      return res.status(422).send(row.assignee_id
+        ? 'Not shared. The person this request is assigned to can no longer receive it, so nobody on the client team would be told. Reassign it to an active client team member, then share it again.'
+        : 'Not shared. This request has no assignee and this client team has no owner or ISMS manager to pick it up, so nobody would be told or able to open it. Assign it to an active client team member, then share it again.');
+    }
     if (!result.changes) return res.status(409).send('This request changed. Reload before sharing it.');
     logAction(req.user.id,req.workspace.id,'release_client_request','client_request',row.id,null,auditCtx(req));
     res.redirect(withToast(`/workspaces/${req.workspace.id}/client-portal/requests/${row.id}`,'Request shared with the client team.'));
@@ -1373,7 +1402,7 @@ function register(app, deps) {
 
   function loadVisibleDelivery(req, id) {
     const frameworks = Array.isArray(req.workspace.frameworks) ? req.workspace.frameworks : [];
-    if (!frameworks.includes('iso27001')) return null;
+    if (!frameworks.some(code => ['iso27001', 'iso42001'].includes(code))) return null;
     // `client_visible` is only the authoring flag.  The contracted lifecycle
     // projection is the authoritative boundary: a gap-assessment-only client
     // must not be able to act on retained implementation/certification rows by

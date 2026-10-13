@@ -1,0 +1,36 @@
+<%#
+  Certification requests by stage and state, one bar per stage and one
+  segment per state, in the order a request travels from the checklist to the
+  auditor. Used by the request list and the overview so the same fact always
+  looks the same.
+  Expects: stages [{ key, label, note, total, byStatus, overdue }],
+           href(stageKey, statusKey), STATUS_LABELS, active { stage, status },
+           keys (true to list each state's count under its bar).
+%>
+<%
+  const FLOW = ['not_started', 'with_client', 'to_review', 'follow_up', 'ready', 'submitted', 'accepted', 'not_applicable'];
+  // One tone scale for the whole module; see the vocabulary in iso42001.css.
+  const TONE = { not_started: 'open', with_client: 'wip', to_review: 'gap', follow_up: 'gap', ready: 'part', submitted: 'part', accepted: 'done', not_applicable: 'na' };
+  const act = typeof active !== 'undefined' && active ? active : {};
+%>
+<div class="rq-flow-rows">
+  <% stages.forEach(st => { %>
+    <div class="rq-flow-row<%= act.stage === st.key ? ' is-active' : '' %>">
+      <a class="rq-flow-label" href="<%- href(st.key, 'all') %>">
+        <b><%= st.label %></b>
+        <span><%= st.note %><% if (st.overdue) { %> · <em><%= st.overdue %> overdue</em><% } %></span>
+      </a>
+      <div>
+        <div class="rq-flow-bar">
+          <% if (!st.total) { %><span class="rq-seg t-open" style="--n:1"><span>0</span></span><% } %>
+          <% FLOW.filter(k => st.byStatus[k]).forEach(k => { %>
+            <a class="rq-seg t-<%= TONE[k] %><%= act.stage === st.key && act.status === k ? ' is-active' : '' %>" style="--n:<%= st.byStatus[k] %>" href="<%- href(st.key, k) %>" title="<%= st.label %>, <%= STATUS_LABELS[k].toLowerCase() %>: <%= st.byStatus[k] %>" aria-label="<%= st.label %>, <%= STATUS_LABELS[k].toLowerCase() %>: <%= st.byStatus[k] %>"><span><%= st.byStatus[k] %></span></a>
+          <% }) %>
+        </div>
+        <% if (keys) { %>
+          <ul class="rq-flow-keys"><% FLOW.filter(k => st.byStatus[k]).forEach(k => { %><li><i class="a42-dot t-<%= TONE[k] %>" aria-hidden="true"></i><a href="<%- href(st.key, k) %>"><%= STATUS_LABELS[k] %></a><span><%= st.byStatus[k] %></span></li><% }) %></ul>
+        <% } %>
+      </div>
+    </div>
+  <% }) %>
+</div>

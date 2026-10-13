@@ -3184,11 +3184,14 @@ function init() {
   addColumnIfMissing('iso42001_items', 'scoping_notes', 'TEXT');
   addColumnIfMissing('iso42001_items', 'maturity_ladder', 'TEXT');         // JSON {1,2,3,4}
   addColumnIfMissing('iso42001_items', 'related_items', 'TEXT');           // JSON array of ids
+  // "The smallest version that will still pass Stage 2" - same role as the
+  // ISO 27001 column above, surfaced in the AIMS wizard guidance panel.
+  addColumnIfMissing('iso42001_items', 'minimum_certifiable', 'TEXT');
   try {
     const content42 = require('./data/iso42001-content');
     const upd42 = db.prepare(`UPDATE iso42001_items SET
       purpose=?, what_good_looks_like=?, common_pitfalls=?, evidence_to_look_for=?,
-      scoping_notes=?, maturity_ladder=?, related_items=? WHERE id=?`);
+      scoping_notes=?, maturity_ladder=?, related_items=?, minimum_certifiable=? WHERE id=?`);
     let n42 = 0;
     for (const [id, c] of Object.entries(content42)) {
       const r = upd42.run(
@@ -3199,6 +3202,7 @@ function init() {
         c.scoping_notes || null,
         c.maturity_ladder ? JSON.stringify(c.maturity_ladder) : null,
         c.related_items ? JSON.stringify(c.related_items) : null,
+        c.minimum_certifiable || null,
         id
       );
       if (r.changes > 0) n42++;
@@ -3465,6 +3469,13 @@ function init() {
     console.error('[db] fresh-boot catalog backfill failed:', e.message);
   }
 
+  // The firm's ISO 27001 <-> ISO 42001 crosswalk, once the catalogue above exists.
+  try {
+    require('./lib/crosswalk-seed').seed(db);
+  } catch (e) {
+    console.error('[db] ISO 27001 / ISO 42001 crosswalk seed failed:', e.message);
+  }
+
   // ISO/IEC 42001 template pack. Runs last so its explicit framework, tier and
   // requirement mapping override the ISO 27001 name and description tagging
   // applied to every system template earlier in init().
@@ -3606,24 +3617,39 @@ function defaultMethodology() {
   };
 }
 
-function ensureWorkspaceMethodology(wsId) {
-  const existing = db.prepare(`SELECT id FROM risk_methodologies WHERE workspace_id=? AND is_active=1`).get(wsId);
+// Each management system keeps its own risk method (migration 079): the
+// ISMS's risk criteria and the AIMS's AI risk criteria (ISO 42001 clause
+// 6.1.1) are separate records. A caller that names no system gets the
+// client's primary one: the AIMS's on an ISO 42001-only client, the ISMS's
+// everywhere else.
+function methodologySystem(wsId, system) {
+  const riskOwner = require('./lib/risk-owner');
+  if (riskOwner.SYSTEMS.includes(system)) return system;
+  const ws = db.prepare('SELECT frameworks FROM workspaces WHERE id=?').get(wsId);
+  return riskOwner.primary(ws || {});
+}
+
+function ensureWorkspaceMethodology(wsId, system) {
+  const owner = methodologySystem(wsId, system);
+  const existing = db.prepare(`SELECT id FROM risk_methodologies WHERE workspace_id=? AND management_system=? AND is_active=1`).get(wsId, owner);
   if (existing) return existing.id;
   const m = defaultMethodology();
-  const id = db.prepare(`INSERT INTO risk_methodologies (workspace_id, name, description, likelihood_scale, impact_scale, matrix, thresholds, is_active)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 1)`).run(
+  const id = db.prepare(`INSERT INTO risk_methodologies (workspace_id, name, description, likelihood_scale, impact_scale, matrix, thresholds, is_active, management_system)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`).run(
       wsId, m.name, m.description,
       JSON.stringify(m.likelihood_scale),
       JSON.stringify(m.impact_scale),
       JSON.stringify(m.matrix),
-      JSON.stringify(m.thresholds)
+      JSON.stringify(m.thresholds),
+      owner
     ).lastInsertRowid;
   return id;
 }
 
-function getActiveMethodology(wsId) {
-  const row = db.prepare(`SELECT * FROM risk_methodologies WHERE workspace_id=? AND is_active=1`).get(wsId);
-  if (!row) return { ...defaultMethodology(), id: null, workspace_id: wsId, is_active: 1, built_in: true };
+function getActiveMethodology(wsId, system) {
+  const owner = methodologySystem(wsId, system);
+  const row = db.prepare(`SELECT * FROM risk_methodologies WHERE workspace_id=? AND management_system=? AND is_active=1 ORDER BY id DESC`).get(wsId, owner);
+  if (!row) return { ...defaultMethodology(), id: null, workspace_id: wsId, is_active: 1, built_in: true, management_system: owner };
   return {
     ...row,
     likelihood_scale: JSON.parse(row.likelihood_scale),

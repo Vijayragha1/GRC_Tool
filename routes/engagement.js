@@ -3,6 +3,8 @@
 
 const INTAKE = require('../data/intake-questions');
 const delivery = require('../lib/engagement-delivery');
+const aimsDelivery = require('../lib/iso42001-delivery');
+const outcomeScope = require('../lib/engagement-outcome-scope');
 const auditPack = require('../lib/audit-pack');
 const enc = require('../lib/encryption');
 const fs = require('fs');
@@ -294,9 +296,9 @@ function register(app, deps) {
     const visible = !!req.body.client_visible;
     const clientTitle = String(req.body.client_title || '').trim();
     const clientDescription = String(req.body.client_description || '').trim();
-    const frameworkCode = String(req.body.framework_code || 'iso27001').trim().toLowerCase();
+    const frameworkCode = String(req.body.framework_code || (aimsDelivery.isAims(req.workspace) ? 'iso42001' : 'iso27001')).trim().toLowerCase();
     const requirementRefs = String(req.body.requirement_refs || '').trim();
-    const enabled = new Set([...(Array.isArray(req.workspace.frameworks) ? req.workspace.frameworks : []), 'iso27001']);
+    const enabled = new Set(outcomeScope.frameworkCodes(req.workspace));
     if (visible && !clientTitle) throw new Error('A client-facing title is required for a client-visible deliverable.');
     if (visible && !clientDescription) throw new Error('Client instructions are required for a client-visible deliverable.');
     if (!enabled.has(frameworkCode)) throw new Error('Choose a framework enabled for this engagement.');
@@ -312,18 +314,23 @@ function register(app, deps) {
   };
   const requireIso27001Plan = (req, res, next) => {
     const frameworks = Array.isArray(req.workspace.frameworks) ? req.workspace.frameworks : [];
-    if (frameworks.includes('iso27001')) return next();
+    if (frameworks.includes('iso27001') || frameworks.includes('iso42001')) return next();
     return res.status(409).render('error', {
       user: req.user,
       ws: req.workspace,
-      message: 'The ISO 27001 engagement plan is not enabled for this client. Open the selected framework programme instead.'
+      message: 'An ISO management-system engagement plan is not enabled for this client. Open the selected framework programme instead.'
     });
   };
   // This prefix guard runs before every plan read, mutation and export.  It
   // also prevents a guessed URL from materialising an ISO plan for a NIST CSF
-  // or ISO 42001-only client.
+  // client without an ISO management-system programme.
   app.use('/workspaces/:wsId/engagement-plan', requireAuth, requireWorkspace, requireIso27001Plan);
   const contractedProjection = req => delivery.getProjection(db, req.workspace, req.user.id);
+  const requireMutableReportEvidence = req => {
+    if (!aimsDelivery.reportKey(req.workspace)) return;
+    const row = db.prepare(`SELECT d.status,m.milestone_key FROM engagement_delivery_deliverables d JOIN engagement_delivery_milestones m ON m.id=d.milestone_id WHERE d.id=? AND d.workspace_id=?`).get(req.params.deliverableId, req.workspace.id);
+    if (aimsDelivery.isReportMilestone(req.workspace, row?.milestone_key) && ['submitted','accepted','superseded'].includes(row.status)) throw new Error('Request changes or create a revision before changing controlled report evidence.');
+  };
   const requireContractedRow = (req, type, id) => {
     const projection = contractedProjection(req);
     const rows = type === 'phase' ? projection.phases
@@ -396,6 +403,37 @@ function register(app, deps) {
         }
       }
     }, 'Plan settings updated.');
+  });
+
+  // AIMS uses the same delivery acceptance and event trail, with an explicit
+  // publication and closure decision tied to the reviewed assessment hash.
+  // On a combined client this publishes the separate ISO 42001 report.
+  app.post('/workspaces/:wsId/engagement-plan/publish-report', requireAuth, requireWorkspace, requirePermission('assessment.signoff'), (req, res) => {
+    runPlanAction(req, res, () => {
+      if (!aimsDelivery.reportKey(req.workspace)) throw new Error('Use the governed assessment report workflow for this framework.');
+      const plan = delivery.ensurePlan(db, req.workspace, req.user.id);
+      const published = aimsDelivery.publishReport(db, req.workspace, req.user.id, plan, delivery.event);
+      logAction(req.user.id, req.workspace.id, 'publish_iso42001_report', 'engagement_deliverable', published.report.id, { assessment_hash: published.snapshotHash }, auditCtx(req));
+    }, aimsDelivery.isCombined(req.workspace) ? 'The independently approved ISO 42001 report is published to the client.' : 'The independently approved report is published to the client.');
+  });
+  app.post('/workspaces/:wsId/engagement-plan/close-gap', requireAuth, requireWorkspace, requirePermission('workspace.update'), (req, res) => {
+    runPlanAction(req, res, () => {
+      if (!aimsDelivery.isAims(req.workspace) || !outcomeScope.isGapAssessmentOnly(req.workspace)) throw new Error('This action is only for an ISO 42001 gap-assessment-only contract.');
+      const plan = delivery.ensurePlan(db, req.workspace, req.user.id);
+      const gap = aimsDelivery.gapContext(db, req.workspace);
+      if (!gap.closure.ready) throw new Error(gap.closure.blockers.join(' '));
+      const note = String(req.body.note || '').trim();
+      if (!note) throw new Error('Record the engagement closure decision.');
+      db.transaction(() => {
+        if (!gap.closure.complete) delivery.event(db, req.workspace.id, plan.id, req.user.id, 'plan', plan.id, 'aims_gap_closed', 'active', 'completed', { publication_id: gap.publication.id, note });
+        delivery.syncOutcomePlanStatus(db, req.workspace, req.user.id);
+        if (gap.engagement) {
+          db.prepare("UPDATE consulting_engagements SET status='complete',completed_at=datetime('now'),completion_note=?,row_version=row_version+1 WHERE id=? AND workspace_id=?").run(note, gap.engagement.id, req.workspace.id);
+          db.prepare("INSERT INTO consulting_events (workspace_id,engagement_id,entity_type,entity_id,action,details_json,actor_id) VALUES (?,?,'engagement',?,'completed_at_report',?,?)").run(req.workspace.id, gap.engagement.id, gap.engagement.id, JSON.stringify({ plan_id: plan.id, publication_id: gap.publication.id, note }), req.user.id);
+        }
+        logAction(req.user.id, req.workspace.id, 'close_iso42001_gap_engagement', 'engagement_plan', plan.id, { note }, auditCtx(req));
+      })();
+    }, 'Gap-assessment engagement formally closed. Findings remain client-owned recommendations.');
   });
 
   app.post('/workspaces/:wsId/engagement-plan/baselines', requireAuth, requireWorkspace, requirePermission('workspace.update'), (req, res) => {
@@ -497,6 +535,10 @@ function register(app, deps) {
       requireContractedRow(req, 'deliverable', req.params.deliverableId);
       if (!planUser(req.workspace, req.body.owner_id) || !planUser(req.workspace, req.body.approver_id)) throw new Error('Owner and approver must belong to this engagement.');
       const presentation = clientPresentation(req);
+      const governed = requireContractedRow(req, 'deliverable', req.params.deliverableId).row;
+      const report = aimsDelivery.isReportMilestone(req.workspace, db.prepare('SELECT milestone_key FROM engagement_delivery_milestones WHERE id=?').get(governed.milestone_id)?.milestone_key);
+      if (report && (!req.body.is_required || !req.body.requires_evidence || !presentation.visible || presentation.frameworkCode !== 'iso42001')) throw new Error('The controlled report must remain required, evidenced and visible to the client under ISO 42001.');
+      if (report && governed.status === 'accepted') throw new Error('Request changes before editing an accepted controlled report.');
       const result = db.prepare(`UPDATE engagement_delivery_deliverables SET title=?,description=?,acceptance_criteria=?,client_title=?,client_description=?,
         framework_code=?,requirement_refs=?,is_required=?,owner_id=?,approver_id=?,due_date=?,client_visible=?,requires_evidence=?,updated_at=datetime('now'),row_version=row_version+1
         WHERE id=? AND plan_id=? AND workspace_id=? AND row_version=?`).run(
@@ -556,6 +598,7 @@ function register(app, deps) {
       const cleanup = () => { try { if (req.file?.path) fs.unlinkSync(req.file.path); } catch (_) {} };
       try {
         requireContractedRow(req, 'deliverable', req.params.deliverableId);
+        requireMutableReportEvidence(req);
         const row = db.prepare(`SELECT d.id,d.plan_id,d.title FROM engagement_delivery_deliverables d WHERE d.id=? AND d.workspace_id=?`).get(req.params.deliverableId, req.workspace.id);
         if (!row || !req.file) throw new Error(!row ? 'Deliverable not found.' : 'Choose a file to upload.');
         const sha = crypto.createHash('sha256').update(fs.readFileSync(req.file.path)).digest('hex');
@@ -584,6 +627,7 @@ function register(app, deps) {
     runPlanAction(req, res, () => {
       requireContractedRow(req, 'deliverable', req.params.deliverableId);
       const row = db.prepare(`SELECT id,plan_id FROM engagement_delivery_deliverables WHERE id=? AND workspace_id=?`).get(req.params.deliverableId, req.workspace.id);
+      requireMutableReportEvidence(req);
       const evidenceRow = db.prepare(`SELECT id,sha256 FROM evidence WHERE id=? AND workspace_id=? AND superseded_at IS NULL`).get(req.body.evidence_id, req.workspace.id);
       if (!row || !evidenceRow) throw new Error('Choose an evidence record from this workspace.');
       db.prepare(`INSERT OR IGNORE INTO engagement_delivery_evidence (workspace_id,deliverable_id,evidence_id,linked_by) VALUES (?,?,?,?)`).run(req.workspace.id,row.id,evidenceRow.id,req.user.id);

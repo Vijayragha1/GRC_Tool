@@ -77,10 +77,11 @@
           <% [
                { key: 'prior_actions_status',        clause: '9.3.2 a)', label: 'Prior actions' },
                { key: 'context_changes',             clause: '9.3.2 b)', label: 'Context changes' },
-               { key: 'performance_review',          clause: '9.3.2 c)', label: 'Performance' },
-               { key: 'feedback_interested_parties', clause: '9.3.2 d)', label: 'Interested-party feedback' },
-               { key: 'risk_treatment_status',       clause: '9.3.2 e)', label: 'Risk treatment' },
-               { key: 'improvement_opportunities',   clause: '9.3.2 f)', label: 'Improvements' }
+               { key: 'interested_party_changes',    clause: '9.3.2 c)', label: 'Interested-party changes' },
+               { key: 'performance_review',          clause: '9.3.2 d)', label: 'Performance' },
+               { key: 'feedback_interested_parties', clause: '9.3.2 e)', label: 'Interested-party feedback' },
+               { key: 'risk_treatment_status',       clause: '9.3.2 f)', label: 'Risk treatment' },
+               { key: 'improvement_opportunities',   clause: '9.3.2 g)', label: 'Improvements' }
              ].forEach(f => { %>
             <div class="pre932-row">
               <div class="pre932-label"><%= f.label %><span class="clause"><%= f.clause %></span></div>
@@ -113,7 +114,7 @@
           <div class="empty-state">
             <div class="empty-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
             <div class="empty-title">Schedule the first management review</div>
-            <div class="empty-sub">Clause 9.3 requires top management to review the ISMS at planned intervals. The review record auto-pulls live client state for required inputs.</div>
+            <div class="empty-sub">Clause 9.3 requires top management to review the management system at planned intervals. The review record auto-pulls live client state for required inputs.</div>
             <button onclick="document.getElementById('newMrm').classList.toggle('hidden')" class="btn btn-primary">Schedule MRM</button>
           </div>
         </td></tr>

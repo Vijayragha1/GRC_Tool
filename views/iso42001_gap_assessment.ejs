@@ -1,40 +1,43 @@
 <%- include('partials/header', { title: 'ISO 42001 gap assessment', user, ws, active: 'iso42001-gap' }) %>
 
-<style>
-  @media(max-width:760px){
-    .iso42-gap-counts{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:14px 8px!important}
-    .iso42-gap-resume{width:100%}
-  }
-</style>
-
 <div class="page-head">
   <div>
     <h1 class="page-title">ISO 42001 gap assessment</h1>
-    <div class="page-subtitle">Walk through 27 clauses (4-10) + 38 Annex A controls one at a time. Answers drive a suggested status; the result feeds the SoA, Roadmap, and Exec brief.</div>
+    <div class="page-subtitle">27 clauses and 38 Annex A controls, one at a time. Each conclusion feeds the Statement of Applicability, the roadmap and the executive brief.</div>
   </div>
-  <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/gap-assessment/start">
-    <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-    <button class="btn btn-primary">Start a new pass</button>
-  </form>
-</div>
-
-<div class="panel" style="padding:16px;margin-bottom:16px;">
-  <div class="text-base iso42-gap-counts" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;text-align:center;">
-    <div><div style="font-size:22px;font-weight: 500;"><%= counts.implemented || 0 %></div><div class="meta">Implemented</div></div>
-    <div><div style="font-size:22px;font-weight: 500;"><%= counts.partial || 0 %></div><div class="meta">Partial</div></div>
-    <div><div style="font-size:22px;font-weight: 500;"><%= counts.wip || 0 %></div><div class="meta">WIP</div></div>
-    <div><div style="font-size:22px;font-weight: 500;"><%= counts.notimpl || 0 %></div><div class="meta">Not implemented</div></div>
-    <div><div style="font-size:22px;font-weight: 500;"><%= counts.na || 0 %></div><div class="meta">N/A</div></div>
-    <div><div class="text-tertiary" style="font-size:22px;font-weight: 500;"><%= counts.unassessed || 0 %></div><div class="meta">Unassessed</div></div>
-  </div>
-  <div style="margin-top:14px;text-align:center;">
-    <a href="/workspaces/<%= ws.id %>/iso42001/gap" class="btn btn-secondary iso42-gap-resume">Resume - jump to next un-assessed item</a>
+  <div class="row-center" style="gap:6px;">
+    <a class="btn btn-secondary" href="/workspaces/<%= ws.id %>/iso42001/gap-report.pdf" title="The assessment as it stands, for your own working. The client receives the independently reviewed report released through the engagement plan.">Working export PDF</a>
+    <a class="btn btn-secondary" href="/workspaces/<%= ws.id %>/iso42001/gap-report.docx" title="The same working export as an editable Word document">Word</a>
+    <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/gap-assessment/start">
+      <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+      <button class="btn btn-primary" <%= passes.some(p=>p.status==='open')?'disabled':'' %>>Start a new pass</button>
+    </form>
   </div>
 </div>
 
-<h2 class="text-xl text-tertiary" style="text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Assessment passes</h2>
-<div class="panel" style="overflow:hidden;">
-  <table class="t">
+<% if (typeof a42Masthead === 'function') { %><%- include('partials/a42_map', { mast: a42Masthead(), heading: 'Where the assessment stands', intro: 'Each tile is one requirement, coloured by its recorded conclusion. Select one to open it.' }) %><% } %>
+
+<section class="panel a42-signoff<%= gapState.complete ? ' is-complete' : '' %>" aria-labelledby="a42SignoffTitle">
+  <div class="panel-head">
+    <div>
+      <h2 id="a42SignoffTitle"><i class="a42-dot t-<%= gapState.complete ? 'done' : gapState.blockers.length ? 'gap' : 'open' %>" aria-hidden="true"></i> <%= gapState.complete ? 'Independently reviewed assessment retained' : 'Independent assessment sign-off required' %></h2>
+      <p class="a42-caption"><%= gapState.blockers.length ? `${gapState.blockers.length} condition${gapState.blockers.length === 1 ? '' : 's'} outstanding before a reviewer can sign off` : gapState.complete ? 'The reviewed baseline is current.' : 'Every condition is met. A reviewer who did not prepare the conclusions can sign off.' %></p>
+    </div>
+  </div>
+  <% if(gapState.blockers.length){ %>
+    <ul class="a42-list">
+      <% gapState.blockers.forEach(message=>{ %><li><i class="a42-dot t-gap" aria-hidden="true"></i><div><p class="a42-list-text"><%= message %></p></div></li><% }) %>
+    </ul>
+  <% } %>
+  <details class="a42-fold">
+    <summary>What sign-off requires</summary>
+    <p>Completion requires a reviewer who did not prepare the conclusions, a verified decision for every requirement in this pass, justified exclusions and gaps, and linked evidence for implementation claims. Historical operating evidence remains available for review. A completed assessment does not mean every requirement conforms.</p>
+  </details>
+</section>
+
+<section class="panel" style="overflow:hidden;" aria-labelledby="a42PassesTitle">
+  <div class="panel-head"><h2 id="a42PassesTitle">Assessment passes</h2><span class="meta">Each pass keeps its own conclusions and notes</span></div>
+  <div style="overflow-x:auto;"><table class="t">
     <thead><tr><th style="width:80px;">Pass</th><th>Name</th><th>Started</th><th>Started by</th><th>Status</th><th>Completed</th><th style="width:130px;"></th></tr></thead>
     <tbody>
       <% passes.forEach(p => { %>
@@ -43,14 +46,16 @@
           <td><%= p.name %></td>
           <td class="meta"><%= p.started_at %></td>
           <td class="meta"><%= p.started_by_name || '-' %></td>
-          <td><span class="status s-<%= (p.status||'open').toLowerCase().replace(/ /g,'-') %>"><%= p.status %></span></td>
+          <td><span class="status s-<%= (p.status||'open').toLowerCase().replace(/ /g,'-') %>"><%= reviewedPasses[p.id] ? 'Independently reviewed' : p.status==='completed' ? 'Legacy completion, not independently reviewed' : p.status %></span></td>
           <td class="meta"><%= p.completed_at || '-' %></td>
           <td>
             <% if (p.status !== 'completed') { %>
               <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/gap-assessment/<%= p.id %>/complete" style="display:inline;">
                 <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
-                <button class="btn btn-ghost btn-xs">Mark complete</button>
+                <button class="btn btn-ghost btn-xs" <%= Number(p.started_by)===Number(user.id)?'disabled':'' %>>Independently sign off</button>
               </form>
+            <% } else if(reviewedPasses[p.id]) { %>
+              <a class="btn btn-ghost btn-xs" href="/workspaces/<%= ws.id %>/iso42001/gap-assessment/<%= p.id %>/report">Reviewed report</a>
             <% } %>
           </td>
         </tr>
@@ -59,7 +64,7 @@
         <tr><td colspan="7" class="t-empty">No passes yet. Click "Start a new pass" above to begin.</td></tr>
       <% } %>
     </tbody>
-  </table>
-</div>
+  </table></div>
+</section>
 
 <%- include('partials/footer') %>

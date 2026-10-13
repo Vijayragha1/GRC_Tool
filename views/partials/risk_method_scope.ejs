@@ -1,0 +1,2 @@
+<%# Which management system's risk method a form edits, and where to go back
+    to afterwards (routes/workspace-ops-b.js). %><% if (typeof standard !== 'undefined' && standard) { %><input type="hidden" name="standard" value="<%= standard %>"><% } %><% if (typeof returnTo !== 'undefined' && returnTo) { %><input type="hidden" name="return_to" value="<%= returnTo %>"><% } %>

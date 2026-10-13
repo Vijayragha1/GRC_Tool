@@ -41,8 +41,8 @@
       <label class="panel-pad" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;border:1px solid var(--border);border-radius:8px;"><input type="checkbox" name="frameworks" value="dpdpa" style="margin-top:3px;"><span><strong style="display:block;">India DPDPA</strong><span class="meta">Evidence-backed data-protection gap assessment</span></span></label>
     </div>
     <fieldset id="enable-iso27001-outcome" hidden style="border:1px solid var(--border);border-radius:8px;padding:14px;margin:16px 0 0;">
-      <legend class="label" style="padding:0 5px;">Contracted ISO 27001 outcome <span class="meta">required</span></legend>
-      <p class="meta" style="margin:0 0 10px;line-height:1.5;">Choose the contracted endpoint before ISO 27001 is enabled. This creates the matching governed engagement and delivery plan.</p>
+      <legend class="label" style="padding:0 5px;">Contracted ISO management-system outcome <span class="meta">required</span></legend>
+      <p class="meta" style="margin:0 0 10px;line-height:1.5;">Choose the contracted endpoint before ISO 27001 or ISO 42001 is enabled. This creates the matching governed engagement and delivery plan.</p>
       <div class="unassigned-option-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
         <% outcomeOptions.forEach(option => { %>
           <label class="panel-pad" style="display:flex;align-items:flex-start;gap:9px;cursor:pointer;border:1px solid var(--border);border-radius:7px;">
@@ -85,13 +85,13 @@
 
 <script>
   (function () {
-    const isoProgramme = document.getElementById('enable-iso27001-programme');
+    const isoProgrammes = Array.from(document.querySelectorAll('#programme-enable-form input[name="frameworks"]')).filter(input => ['iso27001', 'iso42001'].includes(input.value));
     const outcomeFieldset = document.getElementById('enable-iso27001-outcome');
     const targetField = document.getElementById('enable-certification-target');
     const target = document.getElementById('enable-target-cert-date');
     const choices = document.querySelectorAll('#enable-iso27001-outcome input[name="engagement_outcome"]');
     function syncIsoOutcome() {
-      const enabled = !!isoProgramme.checked;
+      const enabled = isoProgrammes.some(input => input.checked);
       const selected = document.querySelector('#enable-iso27001-outcome input[name="engagement_outcome"]:checked');
       const fullSupport = enabled && selected && selected.value === 'certification_support';
       outcomeFieldset.hidden = !enabled;
@@ -100,7 +100,7 @@
       target.disabled = !fullSupport;
       if (!fullSupport) target.value = '';
     }
-    isoProgramme.addEventListener('change', syncIsoOutcome);
+    isoProgrammes.forEach(input => input.addEventListener('change', syncIsoOutcome));
     choices.forEach(choice => choice.addEventListener('change', syncIsoOutcome));
     syncIsoOutcome();
   })();

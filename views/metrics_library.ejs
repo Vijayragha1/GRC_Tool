@@ -69,7 +69,7 @@
           </div>
           <% if (m.controlsResolved && m.controlsResolved.length) { %>
             <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">
-              <% m.controlsResolved.forEach(c => { %><a href="/workspaces/<%= ws.id %>/controls/assess/<%= c.id %>" class="tag tag-info text-eyebrow" style="text-decoration:none;" title="<%= c.title %>"><%= c.id.replace('annex-','').replace('clause-','Cl. ').toUpperCase() %></a><% }) %>
+              <% m.controlsResolved.forEach(c => { const ai = c.id.startsWith('ai-'); %><a href="/workspaces/<%= ws.id %>/<%= ai ? 'iso42001/gap' : 'controls/assess' %>/<%= c.id %>" class="tag tag-info text-eyebrow" style="text-decoration:none;" title="<%= c.title %>"><%= ai ? 'ISO 42001 ' + (c.title || '').split(' ')[0] : c.id.replace('annex-','').replace('clause-','Cl. ').toUpperCase() %></a><% }) %>
             </div>
           <% } %>
           <details style="margin-top:8px;">
@@ -88,6 +88,25 @@
     <% }) %>
   </div>
 <% }) %>
+
+<details class="panel" style="margin-bottom:14px;">
+  <summary class="panel-pad text-lg" style="cursor:pointer;font-weight:500;">+ Define a measure of your own</summary>
+  <form method="POST" action="/workspaces/<%= ws.id %>/metrics/custom" class="panel-pad stack-grid" style="--cols:minmax(0,1.4fr) minmax(0,1fr) 110px 130px;gap:10px;border-top:1px solid var(--border);">
+    <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
+    <div><label class="label">Name</label><input class="input" name="name" required placeholder="e.g. Triage assistant recall on urgent cases"></div>
+    <div><label class="label">Category</label><input class="input" name="category" list="metricCategories" placeholder="Custom measures"><datalist id="metricCategories"><% (typeof customCategories !== 'undefined' ? customCategories : []).forEach(c => { %><option value="<%= c %>"><% }) %></datalist></div>
+    <div><label class="label">Unit</label><input class="input" name="unit" placeholder="%"></div>
+    <div><label class="label">Better when</label><select class="select" name="direction"><option value="higher">Higher</option><option value="lower">Lower</option></select></div>
+    <div><label class="label">How it is calculated</label><input class="input" name="formula" placeholder="e.g. urgent cases flagged / urgent cases x 100"></div>
+    <div><label class="label">Target</label><input class="input" name="target_value" type="number" step="any"></div>
+    <div><label class="label">Frequency</label><input class="input" name="frequency" placeholder="Monthly"></div>
+    <div><label class="label">Owner</label><input class="input" name="owner_name"></div>
+    <% if (typeof aiSystems !== 'undefined' && aiSystems.length) { %>
+      <div><label class="label">AI system <span class="meta">optional</span></label><select class="select" name="ai_system_id"><option value="">- none -</option><% aiSystems.forEach(sy => { %><option value="<%= sy.id %>"><%= sy.name %></option><% }) %></select></div>
+    <% } %>
+    <div class="col-full"><button class="btn btn-primary btn-xs">Create measure</button></div>
+  </form>
+</details>
 
 <script>
 function updateCount() {

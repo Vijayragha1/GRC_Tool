@@ -1,0 +1,20 @@
+<%- include('partials/auditor_header', { title: 'Impact assessment', token, share, workspace, active: 'aims-systems' }) %>
+<style>
+  .a-ia table { width: 100%; border-collapse: collapse; margin: 0 0 18px; font-size: 13px; }
+  .a-ia th, .a-ia td { text-align: left; vertical-align: top; padding: 7px 10px; border-bottom: 1px solid var(--border); }
+  .a-ia th { color: var(--text-secondary); font-weight: 500; }
+  .a-ia h2 { font-size: 16px; margin: 22px 0 8px; }
+  .a-ia h3 { font-size: 14px; margin: 16px 0 4px; }
+  .a-ia p { margin: 0 0 10px; line-height: 1.6; max-width: 72ch; }
+  .a-ia .meta { color: var(--text-tertiary); }
+</style>
+
+<a href="/auditor/<%= token %>/aims/systems" class="meta">← AI system register</a>
+<div class="a-page-head" style="margin-top:8px;">
+  <h1 class="a-page-title"><%= report.title %></h1>
+  <% if (status === 'superseded') { %><div class="a-page-sub">This version has been superseded by a later approved assessment.</div><% } %>
+</div>
+
+<div class="panel"><div class="panel-pad a-ia"><%- report.body %></div></div>
+
+<%- include('partials/auditor_footer') %>

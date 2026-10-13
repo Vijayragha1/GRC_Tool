@@ -1,0 +1,195 @@
+<%- include('partials/header', { title, user, ws, active }) %>
+<%
+  const csrf = typeof csrfToken !== 'undefined' ? csrfToken : null;
+  const overdue = (d) => d && d < today;
+  const labelOf = (list, key) => (list.find(k => k.key === key) || {}).label || String(key || '').replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+  const fmtDay = d => d ? new Date(`${String(d).slice(0, 10)}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '';
+  const tone = (review, addressed) => overdue(review) ? 'gap' : addressed ? 'done' : 'wip';
+%>
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Context and interested parties</h1>
+    <div class="page-subtitle">The internal and external issues that shape the AI management system (clause 4.1), the interested parties whose requirements it addresses (clause 4.2), and the risks and opportunities for the management system that follow from both (clause 6.1.1). Mark each requirement that is a legal, regulatory or contractual obligation.</div>
+  </div>
+</div>
+<% const climate = context.climate; %>
+
+<section class="a42-stats" aria-label="Context measures">
+  <div class="a42-stat"><span>Issues</span><strong><%= context.issues.length %></strong><em>Clause 4.1</em></div>
+  <div class="a42-stat"><span>Interested parties</span><strong><%= context.parties.length %></strong><em>Clause 4.2</em></div>
+  <div class="a42-stat"><span>Obligations</span><strong><%= context.obligations %></strong><em>Legal, regulatory or contractual</em></div>
+  <div class="a42-stat<%= context.overdue ? ' is-attention' : '' %>"><span>Past their review date</span><strong><%= context.overdue %></strong><em><%= context.overdue ? 'Review and update them' : 'Nothing overdue' %></em></div>
+</section>
+
+<section class="panel" id="climate" aria-labelledby="ctxClimateTitle">
+  <div class="panel-head"><div><h2 id="ctxClimateTitle">Is climate change a relevant issue?</h2><p class="a42-caption">Clause 4.1 asks the organisation to decide, and an auditor asks to see the decision and the reasoning behind it. Think of the energy and water that training and running the AI systems use, customers' and investors' climate commitments, and climate risks to operations.</p></div><span class="meta">Clause 4.1</span></div>
+  <% if (climate) { %>
+    <ul class="a42-list a42-events">
+      <li>
+        <i class="a42-dot t-<%= overdue(climate.next_review) ? 'gap' : 'done' %>" aria-hidden="true"></i>
+        <div>
+          <span class="a42-list-title"><%= climate.relevant === 'yes' ? 'Yes, climate change is a relevant issue' : 'No, climate change is not a relevant issue' %></span>
+          <p><%= climate.rationale %></p>
+          <p>Decided <%= fmtDay(climate.decided_at) %><% if (climate.decided_by_name) { %> by <%= climate.decided_by_name %><% } %><% if (climate.next_review) { %> &middot; <span class="<%= overdue(climate.next_review) ? 'a42-warn-text' : '' %>">review <%= fmtDay(climate.next_review) %></span><% } %><% if (climate.relevant === 'yes') { %> &middot; record how it bears on the AIMS as an issue below<% } %></p>
+        </div>
+      </li>
+    </ul>
+  <% } else { %>
+    <p class="a42-empty">Not decided yet. Record the decision either way: a "no" with its reasoning is as good as a "yes" to an auditor.</p>
+  <% } %>
+  <% if (perms.manage) { %>
+    <details class="a42-fold"<%= climate ? '' : ' open' %>>
+      <summary><%= climate ? 'Revisit the decision' : 'Record the decision' %></summary>
+      <form method="POST" action="<%= base %>/context/climate" class="panel-pad stack-grid" style="--cols:minmax(0,180px) minmax(0,1fr) minmax(0,180px);--cols-sm:1fr;gap:10px;">
+        <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
+        <div><label class="label" for="climateRelevant">Relevant?</label><select id="climateRelevant" class="select" name="relevant" required><option value="">Choose</option><option value="yes" <%= climate && climate.relevant === 'yes' ? 'selected' : '' %>>Yes</option><option value="no" <%= climate && climate.relevant === 'no' ? 'selected' : '' %>>No</option></select></div>
+        <div><label class="label" for="climateWhy">Why</label><input id="climateWhy" class="input" name="rationale" required maxlength="2000" value="<%= climate ? climate.rationale : '' %>" placeholder="e.g. Models run on a cloud region with a renewable supply; no customer sets climate terms"></div>
+        <div><label class="label" for="climateReview">Next review</label><input id="climateReview" class="input" type="date" name="next_review" value="<%= climate && climate.next_review || '' %>"></div>
+        <div class="a42-form-actions" style="grid-column:1 / -1;"><button class="btn btn-primary btn-xs">Save decision</button></div>
+      </form>
+    </details>
+  <% } %>
+</section>
+
+<section class="panel" aria-labelledby="ctxIssuesTitle">
+  <div class="panel-head"><div><h2 id="ctxIssuesTitle">Issues</h2><p class="a42-caption">Internal and external issues that shape the AI management system.</p></div><span class="meta">Clause 4.1</span></div>
+  <% if (!context.issues.length) { %><p class="a42-empty">No issues recorded. Start with the intake answers: markets, laws on AI, customers' expectations, the organisation's AI strategy and capabilities.</p><% } else { %>
+  <ul class="a42-list a42-events">
+    <% context.issues.forEach(i => { %>
+      <li>
+        <i class="a42-dot t-<%= tone(i.next_review, i.response) %>" aria-hidden="true"></i>
+        <div>
+          <span class="a42-list-title"><%= i.issue %></span>
+          <p><%= labelOf(K.ISSUE_KINDS, i.kind) %><% if (i.effect) { %> &middot; <%= i.effect %><% } %></p>
+          <p><%= i.response ? `Addressed by: ${i.response}` : 'How it is addressed is not recorded yet' %><% if (i.owner) { %> &middot; <%= i.owner %><% } %><% if (i.next_review) { %> &middot; <span class="<%= overdue(i.next_review) ? 'a42-warn-text' : '' %>">review <%= fmtDay(i.next_review) %></span><% } %></p>
+          <% if (perms.manage) { %>
+          <details class="a42-fold a42-fold-inline">
+            <summary>Edit</summary>
+            <form method="POST" action="<%= base %>/context/issues/<%= i.id %>" class="stack-grid" style="--cols:repeat(3,minmax(0,1fr));--cols-sm:1fr;gap:10px;">
+              <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
+              <div><label class="label">Kind</label><select class="select" name="kind"><% K.ISSUE_KINDS.forEach(k => { %><option value="<%= k.key %>" <%= i.kind === k.key ? 'selected' : '' %>><%= k.label %></option><% }) %></select></div>
+              <div style="grid-column:span 2;"><label class="label">Issue</label><input class="input" name="issue" value="<%= i.issue %>" required></div>
+              <div><label class="label">Effect on the AIMS</label><input class="input" name="effect" value="<%= i.effect || '' %>"></div>
+              <div style="grid-column:span 2;"><label class="label">How it is addressed</label><input class="input" name="response" value="<%= i.response || '' %>"></div>
+              <div><label class="label">Owner</label><input class="input" name="owner" value="<%= i.owner || '' %>"></div>
+              <div><label class="label">Next review</label><input class="input<%= overdue(i.next_review) ? ' is-late' : '' %>" type="date" name="next_review" value="<%= i.next_review || '' %>"></div>
+              <div class="a42-form-actions" style="grid-column:1 / -1;"><button class="btn btn-primary btn-xs">Save</button><button class="btn btn-ghost btn-xs text-danger" formaction="<%= base %>/context/issues/<%= i.id %>/delete" onclick="return confirm('Remove this issue?')">Remove</button></div>
+            </form>
+          </details>
+          <% } %>
+        </div>
+      </li>
+    <% }) %>
+  </ul>
+  <% } %>
+  <% if (perms.manage) { %>
+    <details class="a42-fold">
+      <summary>Add an issue</summary>
+      <form method="POST" action="<%= base %>/context/issues" class="panel-pad stack-grid" style="--cols:repeat(3,minmax(0,1fr));--cols-sm:1fr;gap:10px;">
+        <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
+        <div><label class="label">Kind</label><select class="select" name="kind"><% K.ISSUE_KINDS.forEach(k => { %><option value="<%= k.key %>"><%= k.label %></option><% }) %></select></div>
+        <div style="grid-column:span 2;"><label class="label">Issue</label><input class="input" name="issue" required placeholder="e.g. Customers now ask for evidence of AI governance in tenders"></div>
+        <div><label class="label">Effect on the AIMS</label><input class="input" name="effect"></div>
+        <div style="grid-column:span 2;"><label class="label">How it is addressed</label><input class="input" name="response"></div>
+        <div><label class="label">Owner</label><input class="input" name="owner"></div>
+        <div><label class="label">Next review</label><input class="input" type="date" name="next_review"></div>
+        <div class="a42-form-actions" style="grid-column:1 / -1;"><button class="btn btn-primary btn-xs">Add issue</button></div>
+      </form>
+    </details>
+  <% } %>
+</section>
+
+<section class="panel" aria-labelledby="ctxPartiesTitle">
+  <div class="panel-head"><div><h2 id="ctxPartiesTitle">Interested parties and their requirements</h2><p class="a42-caption">Include the people affected by the AI systems' decisions, not only customers and regulators.</p></div><span class="meta">Clause 4.2</span></div>
+  <% if (!context.parties.length) { %><p class="a42-empty">No interested parties recorded yet.</p><% } else { %>
+  <ul class="a42-list a42-events">
+    <% context.parties.forEach(pt => { %>
+      <li>
+        <i class="a42-dot t-<%= tone(pt.next_review, pt.how_addressed) %>" aria-hidden="true"></i>
+        <div>
+          <span class="a42-list-title"><%= pt.party %></span>
+          <p><%= labelOf(K.PARTY_TYPES, pt.party_type) %> &middot; <%= labelOf(K.REQUIREMENT_KINDS, pt.requirement_kind || 'need') %><% if (pt.needs) { %>: <%= pt.needs %><% } %></p>
+          <p><%= pt.how_addressed ? `Addressed by: ${pt.how_addressed}` : 'How the AIMS addresses it is not recorded yet' %><% if (pt.owner) { %> &middot; <%= pt.owner %><% } %><% if (pt.next_review) { %> &middot; <span class="<%= overdue(pt.next_review) ? 'a42-warn-text' : '' %>">review <%= fmtDay(pt.next_review) %></span><% } %></p>
+          <% if (perms.manage) { %>
+          <details class="a42-fold a42-fold-inline">
+            <summary>Edit</summary>
+            <form method="POST" action="<%= base %>/context/parties/<%= pt.id %>" class="stack-grid" style="--cols:repeat(3,minmax(0,1fr));--cols-sm:1fr;gap:10px;">
+              <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
+              <div><label class="label">Party</label><input class="input" name="party" value="<%= pt.party %>" required></div>
+              <div><label class="label">Type</label><select class="select" name="party_type"><% K.PARTY_TYPES.forEach(k => { %><option value="<%= k.key %>" <%= pt.party_type === k.key ? 'selected' : '' %>><%= k.label %></option><% }) %></select></div>
+              <div><label class="label">Kind of requirement</label><select class="select" name="requirement_kind"><% K.REQUIREMENT_KINDS.forEach(k => { %><option value="<%= k.key %>" <%= (pt.requirement_kind || 'need') === k.key ? 'selected' : '' %>><%= k.label %></option><% }) %></select></div>
+              <div style="grid-column:span 3;"><label class="label">Requirement</label><input class="input" name="needs" value="<%= pt.needs || '' %>"></div>
+              <div style="grid-column:span 3;"><label class="label">How the AIMS addresses it</label><input class="input" name="how_addressed" value="<%= pt.how_addressed || '' %>"></div>
+              <div><label class="label">Owner</label><input class="input" name="owner" value="<%= pt.owner || '' %>"></div>
+              <div><label class="label">Next review</label><input class="input<%= overdue(pt.next_review) ? ' is-late' : '' %>" type="date" name="next_review" value="<%= pt.next_review || '' %>"></div>
+              <div class="a42-form-actions" style="grid-column:1 / -1;"><button class="btn btn-primary btn-xs">Save</button><button class="btn btn-ghost btn-xs text-danger" formaction="<%= base %>/context/parties/<%= pt.id %>/delete" onclick="return confirm('Remove this interested party?')">Remove</button></div>
+            </form>
+          </details>
+          <% } %>
+        </div>
+      </li>
+    <% }) %>
+  </ul>
+  <% } %>
+  <% if (perms.manage) { %>
+    <details class="a42-fold">
+      <summary>Add an interested party</summary>
+      <form method="POST" action="<%= base %>/context/parties" class="panel-pad stack-grid" style="--cols:repeat(3,minmax(0,1fr));--cols-sm:1fr;gap:10px;">
+        <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
+        <div><label class="label">Party</label><input class="input" name="party" required placeholder="e.g. Patients triaged by the assistant"></div>
+        <div><label class="label">Type</label><select class="select" name="party_type"><% K.PARTY_TYPES.forEach(k => { %><option value="<%= k.key %>"><%= k.label %></option><% }) %></select></div>
+        <div><label class="label">Kind of requirement</label><select class="select" name="requirement_kind"><% K.REQUIREMENT_KINDS.forEach(k => { %><option value="<%= k.key %>"><%= k.label %></option><% }) %></select></div>
+        <div style="grid-column:span 3;"><label class="label">Requirement</label><input class="input" name="needs" placeholder="What they need or require of the AIMS"></div>
+        <div style="grid-column:span 3;"><label class="label">How the AIMS addresses it</label><input class="input" name="how_addressed"></div>
+        <div><label class="label">Owner</label><input class="input" name="owner"></div>
+        <div><label class="label">Next review</label><input class="input" type="date" name="next_review"></div>
+        <div class="a42-form-actions" style="grid-column:1 / -1;"><button class="btn btn-primary btn-xs">Add party</button></div>
+      </form>
+    </details>
+  <% } %>
+</section>
+
+<%
+  const roTone = (r) => r.status === 'done' ? 'done' : (r.due_date && overdue(r.due_date)) ? 'gap' : (r.action && r.effectiveness_method) ? 'wip' : 'open';
+%>
+<section class="panel" id="plan" aria-labelledby="ctxPlanTitle">
+  <div class="panel-head"><div><h2 id="ctxPlanTitle">Risks and opportunities for the AIMS</h2><p class="a42-caption">What could stop the management system achieving its results, or help it do better, drawn from the issues and requirements above. These are the AIMS's own, such as depending on one person for impact assessments; the risks each AI system poses belong on the risk register. <strong><%= context.planned %> of <%= context.riskOpps.length %></strong> have an action and a way to judge it.</p></div><span class="meta">Clause 6.1.1</span></div>
+  <% if (!context.riskOpps.length) { %><p class="a42-empty">Nothing planned yet. Work down the issues and requirements above and ask of each: what could go wrong for the AIMS here, and what could go better?</p><% } else { %>
+  <ul class="a42-list a42-events">
+    <% context.riskOpps.forEach(r => { %>
+      <li>
+        <i class="a42-dot t-<%= roTone(r) %>" aria-hidden="true"></i>
+        <div>
+          <span class="a42-list-title"><%= r.description %></span>
+          <p><%= K.RO_KIND_LABEL[r.kind] %> &middot; <%= K.RO_STATUS_LABEL[r.status] %><% if (r.issue_text) { %> &middot; from the issue “<%= r.issue_text %>”<% } %><% if (r.party_name) { %> &middot; from <%= r.party_name %><% } %></p>
+          <p><%= r.action ? `Action: ${r.action}` : 'No action planned yet' %><% if (r.owner) { %> &middot; <%= r.owner %><% } %><% if (r.due_date) { %> &middot; <span class="<%= r.status !== 'done' && overdue(r.due_date) ? 'a42-warn-text' : '' %>">due <%= fmtDay(r.due_date) %></span><% } %></p>
+          <% if (r.integration) { %><p>Built into the AIMS through: <%= r.integration %></p><% } %>
+          <p><%= r.effectiveness_method ? `Effectiveness judged by: ${r.effectiveness_method}` : 'How effectiveness is judged is not recorded yet' %><% if (r.effectiveness_result) { %> &middot; result: <%= r.effectiveness_result %><% } %></p>
+          <% if (perms.manage) { %>
+          <details class="a42-fold a42-fold-inline">
+            <summary>Edit</summary>
+            <form method="POST" action="<%= base %>/context/risks-opportunities/<%= r.id %>" class="stack-grid" style="--cols:repeat(3,minmax(0,1fr));--cols-sm:1fr;gap:10px;">
+              <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
+              <%- include('partials/a42_risk_opp_fields', { r, K, context, overdue }) %>
+              <div class="a42-form-actions" style="grid-column:1 / -1;"><button class="btn btn-primary btn-xs">Save</button><button class="btn btn-ghost btn-xs text-danger" formaction="<%= base %>/context/risks-opportunities/<%= r.id %>/delete" onclick="return confirm('Remove this from the plan?')">Remove</button></div>
+            </form>
+          </details>
+          <% } %>
+        </div>
+      </li>
+    <% }) %>
+  </ul>
+  <% } %>
+  <% if (perms.manage) { %>
+    <details class="a42-fold">
+      <summary>Add a risk or opportunity</summary>
+      <form method="POST" action="<%= base %>/context/risks-opportunities" class="panel-pad stack-grid" style="--cols:repeat(3,minmax(0,1fr));--cols-sm:1fr;gap:10px;">
+        <% if (csrf) { %><input type="hidden" name="_csrf" value="<%= csrf %>"><% } %>
+        <%- include('partials/a42_risk_opp_fields', { r: null, K, context, overdue }) %>
+        <div class="a42-form-actions" style="grid-column:1 / -1;"><button class="btn btn-primary btn-xs">Add to the plan</button></div>
+      </form>
+    </details>
+  <% } %>
+</section>
+
+<%- include('partials/footer') %>

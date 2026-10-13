@@ -22,7 +22,7 @@
       <th>Date</th>
       <th>Label</th>
       <th>Version</th>
-      <th>Owner / Approver</th>
+      <th>Owner / Approval</th>
       <th class="num">Total</th>
       <th class="num">Included</th>
       <th class="num">Excluded</th>
@@ -33,9 +33,9 @@
       <% snapshots.forEach(s => { %>
         <tr>
           <td class="meta"><%= s.created_at %></td>
-          <td><%= s.label || '-' %></td>
+          <td><a class="link-muted" href="/workspaces/<%= ws.id %>/iso42001/soa/snapshots/<%= s.id %>"><%= s.label || '-' %></a></td>
           <td><%= s.version || '-' %></td>
-          <td class="meta text-xs"><%= s.owner || '-' %><% if (s.approved_by) { %> / <%= s.approved_by %><% } %></td>
+          <td class="meta text-xs"><%= s.owner || '-' %> / <% if (s.approval_status === 'approved') { %><strong style="color:#15803d;">approved by <%= s.approved_by_name %></strong><% } else if (s.approved_by) { %>typed: <%= s.approved_by %> (not a recorded sign-off)<% } else { %>draft<% } %></td>
           <td class="num"><%= s.control_count %></td>
           <td class="num"><%= s.included_count %></td>
           <td class="num"><%= s.excluded_count %></td>

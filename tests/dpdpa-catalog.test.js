@@ -21,21 +21,21 @@ const EXPECTED_DOMAIN_KEYS = [
   'statutory_consent_manager'
 ];
 
-const EXPECTED_HASH = 'cf8df71a0a401c97f7324e9f1680f017c4c3ee189a8ccd96901f001e72758801';
+const EXPECTED_HASH = 'aca12c6b7cdd135105b610b0b879bd7eecd0dee33832726285b2ca26dd6bb634';
 
 test('DPDPA catalog exposes the bounded production corpus in deterministic order', () => {
   assert.equal(catalog.metadata.code, 'dpdpa');
-  assert.equal(catalog.metadata.version, '2026.08.21');
+  assert.equal(catalog.metadata.version, '2026.10.11');
   assert.equal(catalog.metadata.schemaVersion, '1.0.0');
-  assert.equal(catalog.metadata.reviewedAsOf, '2026-08-21');
+  assert.equal(catalog.metadata.reviewedAsOf, '2026-10-11');
   assert.equal(catalog.metadata.domainCount, 13);
-  assert.equal(catalog.metadata.obligationCount, 55);
+  assert.equal(catalog.metadata.obligationCount, 56);
   assert.equal(catalog.domains.length, 13);
-  assert.equal(catalog.obligations.length, 55);
-  assert.equal(catalog.requirements.length, 55);
+  assert.equal(catalog.obligations.length, 56);
+  assert.equal(catalog.requirements.length, 56);
   assert.deepEqual(catalog.domains.map(item => item.key), EXPECTED_DOMAIN_KEYS);
   assert.deepEqual(catalog.domains.map(item => item.order), Array.from({ length: 13 }, (_, index) => index + 1));
-  assert.deepEqual(catalog.obligations.map(item => item.sortOrder), Array.from({ length: 55 }, (_, index) => index + 1));
+  assert.deepEqual(catalog.obligations.map(item => item.sortOrder), Array.from({ length: 56 }, (_, index) => index + 1));
   assert.deepEqual(catalog.requirements.map(item => item.ref), catalog.obligations.map(item => item.ref));
 });
 
@@ -107,8 +107,8 @@ test('commencement status is calculated at the assessment date, including exact 
     new Set(['statutory_consent_manager'])
   );
   assert.equal(catalog.obligations.filter(item => catalog.effectiveStatus(item, '2026-08-21') === 'in_force').length, 0);
-  assert.equal(catalog.obligations.filter(item => catalog.effectiveStatus(item, '2026-11-13') === 'in_force').length, 5);
-  assert.equal(catalog.obligations.filter(item => catalog.effectiveStatus(item, '2027-05-13') === 'in_force').length, 55);
+  assert.equal(catalog.obligations.filter(item => catalog.effectiveStatus(item, '2026-11-13') === 'in_force').length, 6);
+  assert.equal(catalog.obligations.filter(item => catalog.effectiveStatus(item, '2027-05-13') === 'in_force').length, 56);
 
   assert.throws(() => catalog.effectiveStatus(ordinaryConsent, '2027-02-29'), /valid Date/);
   assert.throws(() => catalog.effectiveStatus({}, '2027-05-13'), /legalStatus\.effectiveDate/);

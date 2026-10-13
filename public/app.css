@@ -1738,3 +1738,51 @@ fieldset { min-width: 0; }
   #assessForm input,#assessForm select,#assessForm textarea{max-width:100%;font-size:16px}
   .draft-comparison table{min-width:400px}
 }
+
+/* Requirement assessment page, shared by the ISO assessments. It opens with a
+   brand band that states the requirement and where it stands, then the
+   consultant's conclusion and the evidence. Guidance is folded underneath on a
+   narrow page and becomes a rail beside the work on a wide one. The progress
+   line is the only thing that moves, and only after a save. */
+.assessment-page { --assessment-accent: var(--hero-surface); container: assessment / inline-size; max-width: 1240px; }
+[data-theme="dark"] .assessment-page { --assessment-accent: #7fb9b0; }
+.assessment-topline { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 12px; }
+.assessment-progress { flex: 1 1 160px; min-width: 120px; height: 6px; border-radius: 3px; background: var(--bg-muted); overflow: hidden; }
+.assessment-progress-fill { display: block; height: 100%; width: var(--progress, 0%); border-radius: inherit; background: var(--assessment-accent); transition: width .7s cubic-bezier(.2,.7,.2,1); }
+.assessment-topline-nav { display: flex; gap: 4px; }
+.assessment-hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 18px 32px; margin-bottom: 16px; padding: 22px 24px; border-radius: 12px; background: var(--hero-surface); color: var(--hero-text); }
+.assessment-hero a { color: var(--hero-text); }
+.assessment-hero-eyebrow { margin-bottom: 8px; font-size: 12px; opacity: .78; }
+.assessment-hero-title { margin: 0 0 8px; font-family: var(--font-display); font-size: 24px; font-weight: 500; line-height: 1.2; letter-spacing: -0.01em; color: var(--hero-text); text-wrap: balance; }
+.assessment-hero-code { display: block; margin-bottom: 4px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 13px; font-weight: 400; opacity: .8; }
+.assessment-hero p { max-width: 68ch; margin: 0; font-size: 14px; line-height: 1.55; opacity: .9; }
+.assessment-hero p.assessment-hero-note { margin-top: 8px; font-size: 13px; opacity: .78; }
+.assessment-hero-facts { display: grid; grid-template-columns: repeat(2, minmax(110px, auto)); gap: 12px 24px; margin: 0; }
+.assessment-hero-facts dt { font-size: 11.5px; opacity: .72; }
+.assessment-hero-facts dd { margin: 2px 0 0; font-size: 14px; font-weight: 500; font-variant-numeric: tabular-nums; }
+/* Row gap stays zero so the guidance rail, which spans every row on a wide
+   page, never opens space between the panels beside it. */
+.assessment-layout { display: grid; grid-template-columns: minmax(0, 1fr); row-gap: 0; }
+.assessment-layout > * { min-width: 0; margin: 0 0 16px; }
+.assessment-guide-box { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
+.assessment-guide-box > summary { padding: 12px 16px; font-size: 13px; font-weight: 500; cursor: pointer; }
+.assessment-guide-section { padding: 12px 16px; border-top: 1px solid var(--border); }
+.assessment-guide-section h3 { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.assessment-guide-section p, .assessment-guide-section li, .assessment-guide-ladder { margin: 0; font-size: 13px; line-height: 1.55; }
+.assessment-guide-section ul { margin: 0; padding-left: 18px; }
+.assessment-guide-section li + li { margin-top: 4px; }
+.assessment-guide-ladder { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 6px 8px; }
+.assessment-guide-ladder dt { font-weight: 600; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.assessment-guide-ladder dd { margin: 0; }
+.assessment-guide-section .assessment-guide-links { padding: 0; list-style: none; }
+.assessment-guide-links a { color: var(--text); text-decoration: none; }
+.assessment-guide-links a:hover { text-decoration: underline; }
+@container assessment (min-width: 1000px) {
+  .assessment-layout { grid-template-columns: minmax(0, 1fr) 320px; column-gap: 20px; align-items: start; }
+  .assessment-layout > * { grid-column: 1; }
+  .assessment-layout > .assessment-guide { grid-column: 2; grid-row: 1 / span 20; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; }
+}
+@container assessment (max-width: 720px) {
+  .assessment-hero { grid-template-columns: minmax(0, 1fr); padding: 18px; }
+  .assessment-hero-title { font-size: 20px; }
+}

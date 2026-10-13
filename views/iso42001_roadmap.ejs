@@ -115,7 +115,7 @@
 <div class="panel" style="margin-bottom:20px;">
   <div class="panel-head">
     <h2>Annex A treatment phasing</h2>
-    <span class="meta">individual controls by planned treatment phase - drag-replace via the dropdown</span>
+    <span class="meta">each control sits in the phase its due date falls in; choosing another phase sets a due date inside it</span>
   </div>
   <div class="iso42-treatment-board" style="display:grid;grid-template-columns:repeat(5,1fr);gap:0;border-top:1px solid var(--border);">
     <% grouped.forEach((g, idx) => { %>
@@ -133,6 +133,7 @@
             <div class="text-sm" style="line-height:1.3;margin-bottom:5px;">
               <a href="/workspaces/<%= ws.id %>/iso42001/gap/<%= r.id %>" class="link-muted"><%= r.title.replace(/^A\.[0-9.]+ /, '') %></a>
             </div>
+            <% if (r.due_date || r.owner_name) { %><div class="meta text-xs" style="margin-bottom:4px;<%= r.overdue ? 'color:#b91c1c;' : '' %>"><%= r.due_date ? (r.overdue ? 'Overdue · ' : 'Due ') + r.due_date : '' %><%= r.due_date && r.owner_name ? ' · ' : '' %><%= r.owner_name || '' %></div><% } %>
             <form method="POST" action="/workspaces/<%= ws.id %>/iso42001/roadmap/<%= r.id %>/phase" class="rowForm" style="display:inline;">
               <% if (typeof csrfToken !== 'undefined') { %><input type="hidden" name="_csrf" value="<%= csrfToken %>"><% } %>
               <select name="phase" class="select rowInput text-xs" style="width:100%;padding:2px 4px;" onchange="this.form.submit()">

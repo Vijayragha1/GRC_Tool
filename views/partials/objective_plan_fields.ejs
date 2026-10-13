@@ -1,0 +1,26 @@
+<%# The plan behind an objective (clause 6.2): what will be done, with what
+    resources, how results are evaluated, when it was communicated, and which
+    management system it belongs to. Takes ws and, on the edit form, row. %>
+<% const o = locals.row || {}; const fws = (() => { try { return Array.isArray(ws.frameworks) ? ws.frameworks : JSON.parse(ws.frameworks || '[]'); } catch (_) { return []; } })(); %>
+<% if (fws.includes('iso27001') && fws.includes('iso42001')) { %>
+  <div><label class="label">Management system</label>
+    <select class="select" name="framework">
+      <option value="">Both</option>
+      <option value="iso27001" <%= o.framework === 'iso27001' ? 'selected' : '' %>>ISMS (ISO 27001)</option>
+      <option value="iso42001" <%= o.framework === 'iso42001' ? 'selected' : '' %>>AIMS (ISO 42001)</option>
+    </select>
+  </div>
+<% } %>
+<% if (fws.includes('iso42001') && typeof aiTopics !== 'undefined') { const topics = aiTopics; %>
+  <div class="wide"><label class="label">AI objective topic</label>
+    <select class="select" name="ai_topic">
+      <option value="">None, or not an AI objective</option>
+      <% topics.forEach(t => { %><option value="<%= t.key %>" <%= o.ai_topic === t.key ? 'selected' : '' %> title="<%= t.hint %>"><%= t.label %></option><% }) %>
+    </select>
+    <div class="meta text-xs" style="margin-top:5px">The area an AI objective serves, such as fairness or robustness. Kept for objectives of the AI management system.</div>
+  </div>
+<% } %>
+<div class="wide"><label class="label">What will be done</label><textarea class="textarea" name="plan_actions" rows="2" placeholder="The actions that achieve the objective"><%= o.plan_actions || '' %></textarea></div>
+<div><label class="label">Resources</label><input class="input" name="resources" value="<%= o.resources || '' %>" placeholder="People, budget, tools"></div>
+<div><label class="label">How results are evaluated</label><input class="input" name="evaluation_method" value="<%= o.evaluation_method || '' %>" placeholder="e.g. Reviewed at each management review"></div>
+<div><label class="label">Communicated on</label><input class="input" type="date" name="communicated_on" value="<%= o.communicated_on || '' %>"></div>

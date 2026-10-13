@@ -57,6 +57,7 @@ test('a multi-programme client lands on the setup hub, not one programme intake'
 test('a client with no ISO 27001 is never sent to the ISO 27001 intake', async () => {
   const res = await client.post('/workspaces', {
     client_name: 'AI And Maturity Only', frameworks: ['iso42001', 'csf'],
+    engagement_outcome: 'certification_support',
   });
   const id = created(res.location);
   assert.doesNotMatch(res.location, /\/intake/,
@@ -82,7 +83,7 @@ test('a single-service client goes straight to its own surface', async () => {
     const res = await client.post('/workspaces', {
       client_name: `Single ${frameworks[0]} Client`,
       frameworks,
-      ...(frameworks[0] === 'iso27001' ? { engagement_outcome: 'certification_support' } : {}),
+      ...(['iso27001', 'iso42001'].includes(frameworks[0]) ? { engagement_outcome: 'certification_support' } : {}),
     });
     assert.match(res.location, pattern,
       `a ${frameworks[0]}-only client should open its own scoping surface, not a checklist of one`);

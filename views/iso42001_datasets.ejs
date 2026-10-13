@@ -1,0 +1,53 @@
+<%- include('partials/header', { title, user, ws, active }) %>
+<%- include('partials/iso42001_audit_head') %>
+<%
+  const inUse = datasets.filter(d => d.inScopeUse).length;
+  const personal = datasets.filter(d => ['personal', 'sensitive'].includes(d.personal_data)).length;
+  const complete = datasets.filter(d => d.a7.count === d.a7.total).length;
+  const tone = d => d.a7.count === d.a7.total ? 'done' : d.a7.count ? 'wip' : 'open';
+%>
+
+<div class="a42">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Dataset register</h1>
+      <div class="page-subtitle">Every dataset the AI systems are built, tested or run on, with what Annex A.7 asks the organisation to know: how each was obtained, the quality it must meet, how its provenance is recorded and how it is prepared. The auditor samples from this list.</div>
+    </div>
+    <% if (perms.manage) { %><a class="btn btn-primary" href="<%= base %>/datasets/new">Add dataset</a><% } %>
+  </div>
+
+  <section class="a42-stats" aria-label="Dataset measures">
+    <div class="a42-stat"><span>Datasets</span><strong><%= datasets.length %></strong><em>On the register</em></div>
+    <div class="a42-stat"><span>Used in scope</span><strong><%= inUse %></strong><em>By an AI system in the AIMS scope</em></div>
+    <div class="a42-stat<%= complete < datasets.length ? ' is-attention' : '' %>"><span>A.7 records complete</span><strong><%= complete %></strong><em>Acquisition, quality, provenance, preparation</em></div>
+    <div class="a42-stat"><span>Hold personal data</span><strong><%= personal %></strong><em>Data protection law applies</em></div>
+  </section>
+
+  <section class="panel" aria-labelledby="dsListTitle">
+    <div class="panel-head"><div><h2 id="dsListTitle">Datasets</h2><p class="a42-caption">A dot fills in as the four A.7 records are added: open with none, part-way with some, done with all four.</p></div><span class="meta">Annex A.7, A.4.3</span></div>
+    <% if (!datasets.length) { %>
+      <p class="a42-empty">No datasets yet. Start from each AI system's data: what it was trained on, what it was tested on, and what it reads in production.</p>
+    <% } else { %>
+      <ul class="a42-list">
+        <% datasets.forEach(d => { %>
+          <li>
+            <i class="a42-dot t-<%= tone(d) %>" aria-hidden="true"></i>
+            <div>
+              <a class="a42-list-title" href="<%= base %>/datasets/<%= d.id %>"><%= d.name %></a>
+              <p><%= d.origin || (d.source_type ? DS.SOURCE_TYPES[d.source_type] : 'Source not recorded') %> &middot; <%= DS.PERSONAL[d.personal_data] %><% if (d.last_changed) { %> &middot; changed <%= fmtDate(d.last_changed) %><% } %></p>
+              <p><%= d.systems.length ? `Used by ${d.systems.map(s => s.name).join(', ')}` : 'Not linked to an AI system yet' %> &middot; <%= d.a7.count %> of <%= d.a7.total %> A.7 records</p>
+            </div>
+            <a class="a42-list-action" href="<%= base %>/datasets/<%= d.id %>">Open <span aria-hidden="true">→</span></a>
+          </li>
+        <% }) %>
+      </ul>
+    <% } %>
+  </section>
+
+  <section class="panel" aria-labelledby="dsPopTitle">
+    <div class="panel-head"><div><h2 id="dsPopTitle"><%= population.title %></h2><p class="a42-caption">The auditor's population: each dataset an in-scope AI system uses, with every system and what it uses the dataset for. <strong><%= population.rows.length %></strong> row<%= population.rows.length === 1 ? '' : 's' %>.</p></div>
+      <% if (perms.export) { %><a class="a42-list-action" href="<%= base %>/populations/ai-datasets.csv">Download CSV <span aria-hidden="true">→</span></a><% } %></div>
+  </section>
+</div>
+
+<%- include('partials/footer') %>

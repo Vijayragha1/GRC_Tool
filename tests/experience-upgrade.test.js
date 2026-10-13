@@ -58,7 +58,9 @@ test('populated 061 database upgrades additively and presentation rollback prese
   const tables=['control_instances','control_state_history','assessment_passes','consulting_engagements','consultant_workpapers','consultant_workpaper_evidence','consultant_workpaper_reviews','consultant_workpaper_snapshots','consulting_report_snapshots','evidence','evidence_requirement_links','client_requests','notifications','notification_emails'];
   const preserved=tables.map(table=>{const columns=db.prepare(`PRAGMA table_info(${table})`).all().map(row=>row.name);return{table,columns,rows:db.prepare(`SELECT ${columns.join(',')} FROM ${table} ORDER BY id`).all()};});
   const upgraded=require('../migrations/run').applyPending(db);
-  assert.equal(upgraded.applied,7);
+  // Every migration after 061 on disk is applied; counted rather than typed so
+  // a new forward migration does not need this assertion edited.
+  assert.equal(upgraded.applied,fs.readdirSync(path.join(root,'migrations')).filter(file=>/^\d+.*\.(sql|js)$/.test(file)&&Number(file.slice(0,3))>61).length);
   for(const saved of preserved)assert.deepEqual(db.prepare(`SELECT ${saved.columns.join(',')} FROM ${saved.table} ORDER BY id`).all(),saved.rows,`${saved.table}: existing columns must remain byte-for-byte equivalent`);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM notification_outbox').get().n,0,'upgrade never queues historical notification emails');
   assert.equal(db.prepare('SELECT COUNT(*) n FROM consulting_report_revision_requests').get().n,0,'upgrade never invents revision requests from historical report states');
@@ -123,5 +125,6 @@ test('early 062 installations reconcile without rewriting records or migration h
 test('blank install applies the complete pinned migration chain and clean integrity checks',()=>{
   const output=execFileSync(process.execPath,['-e',"const core=require('./db');core.init();const db=core.db;console.log('UPGRADE_RESULT '+JSON.stringify({latest:db.prepare('SELECT id FROM schema_migrations ORDER BY id DESC LIMIT 1').get().id,integrity:db.pragma('integrity_check',{simple:true}),foreignKeys:db.pragma('foreign_key_check'),pending:require('./migrations/run').applyPending(db).applied}));db.close();"],{cwd:root,env:{...process.env,DB_PATH:path.join(temp,'blank.db'),ISMS_KEY_FILE:path.join(temp,'blank.key')},encoding:'utf8'});
   const result=JSON.parse(output.match(/UPGRADE_RESULT (.+)/)[1]);
-  assert.equal(result.latest,'068_iso42001_certification_audit.sql');assert.equal(result.integrity,'ok');assert.deepEqual(result.foreignKeys,[]);assert.equal(result.pending,0);
+  const latestOnDisk=fs.readdirSync(path.join(root,'migrations')).filter(file=>/^\d+.*\.(sql|js)$/.test(file)).sort().pop();
+  assert.equal(result.latest,latestOnDisk);assert.equal(result.integrity,'ok');assert.deepEqual(result.foreignKeys,[]);assert.equal(result.pending,0);
 });

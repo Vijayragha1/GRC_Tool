@@ -80,7 +80,7 @@
   <!-- Metadata -->
   <div class="panel-pad grid-2" style="border-bottom:1px solid var(--border);">
     <div><span class="label">Requester</span><div class="text-base"><%= change.requester_name || '-' %></div></div>
-    <div><span class="label">Category</span><div class="text-base" style="text-transform:capitalize;"><%= (change.category || '-').replace(/_/g,' ') %></div></div>
+    <div><span class="label">Category</span><div class="text-base"><%= change.category ? aims.label(change.category) : '-' %></div></div>
     <div><span class="label">Created</span><div class="text-base mono meta"><%= change.created_at %></div></div>
     <div><span class="label">Status</span><div class="text-base" style="text-transform:capitalize;"><%= change.status %></div></div>
     <% if (change.submitted_at) { %><div><span class="label">Submitted</span><div class="text-base mono meta"><%= change.submitted_at %></div></div><% } %>
@@ -102,9 +102,7 @@
     </div>
     <div><label class="label">Category</label>
       <select class="select" name="category" <%= !editable ? 'disabled' : '' %>>
-        <% ['infrastructure','application','network','security','policy','other'].forEach(c => { %>
-          <option value="<%= c %>" <%= change.category === c ? 'selected' : '' %>><%= c %></option>
-        <% }) %>
+        <%- include('partials/register_category_options', { groups: aims.categories, selected: change.category || 'other' }) %>
       </select>
       <% if (!editable) { %><input type="hidden" name="category" value="<%= change.category %>"><% } %>
     </div>
@@ -152,6 +150,36 @@
     </div>
   </form>
 </div>
+
+<% if (aims.iso42001) {
+  // ISO 42001 (lib/aims-operations.js): the AI systems this change affects,
+  // and whether it is significant. Open at any status.
+  const unlinked = aims.systems.filter(sys => !aims.linked.some(l => l.id === sys.id));
+  const sig = change.significant === 1 ? 'yes' : change.significant === 0 ? 'no' : '';
+%>
+<div class="panel" id="aims" style="margin-top:14px">
+  <div class="panel-head"><h2>AI systems and significance</h2><span class="meta">ISO 42001 clauses 8.1, 8.2, 8.4</span></div>
+  <div class="panel-pad" style="border-bottom:1px solid var(--border);">
+    <span class="label">AI systems it changes</span>
+    <div class="text-base"><% if (aims.linked.length) { %><% aims.linked.forEach((sys, i) => { %><%= i ? ', ' : '' %><a href="/workspaces/<%= ws.id %>/iso42001/ai-systems/<%= sys.id %>" style="color:var(--accent);"><%= sys.name %></a><% }) %><% } else { %>None linked<% } %></div>
+  </div>
+  <form method="POST" action="/workspaces/<%= ws.id %>/changes/<%= change.id %>/ai" class="panel-pad grid-2">
+    <% if (unlinked.length) { %>
+      <div class="col-full"><label class="label">Link an AI system</label>
+        <select class="select" name="ai_system_id"><option value="">None</option><% unlinked.forEach(sys => { %><option value="<%= sys.id %>"><%= sys.name %></option><% }) %></select></div>
+    <% } %>
+    <div class="col-full"><span class="label">Significant change to the AI system?</span>
+      <div class="row" style="gap:14px;">
+        <label><input type="radio" name="significant" value="yes" <%= sig === 'yes' ? 'checked' : '' %>> Yes</label>
+        <label><input type="radio" name="significant" value="no" <%= sig === 'no' ? 'checked' : '' %>> No</label>
+        <label><input type="radio" name="significant" value="" <%= sig === '' ? 'checked' : '' %>> Not decided</label>
+      </div>
+      <span class="hint">Significant, or not decided yet, means the system's impact assessment and the AI risk assessment are done again (clauses 8.2, 8.4).</span>
+    </div>
+    <div class="col-full"><button class="btn btn-primary btn-xs">Save</button></div>
+  </form>
+</div>
+<% } %>
 
 <!-- Approval section -->
 <div class="panel" style="margin-top:14px">

@@ -65,15 +65,16 @@ module.exports = {
 
   'dpdpa-catalog.js': {
     description: 'Atomic, assessable obligations for the India Digital Personal Data Protection Act 2023 and final Rules 2025',
-    last_reviewed: '2026-08-21',
+    last_reviewed: '2026-10-11',
     reviewed_against: [
       'Digital Personal Data Protection Act 2023 (Act 22 of 2023)',
       'G.S.R. 843(E), 13 November 2025 (phased commencement)',
-      'Digital Personal Data Protection Rules 2025, G.S.R. 846(E)',
-      'G.S.R. 892(E), December 2025 corrigendum'
+      'Digital Personal Data Protection Rules 2025, G.S.R. 846(E), Gazette issue No. 760 of 13 November 2025',
+      'G.S.R. 892(E), Gazette issue No. 806 of 11 December 2025 (corrigenda)',
+      'S.O. 5458(E), Digital Personal Data Protection (Removal of Difficulties) Order 2026, in force 6 October 2026'
     ],
     next_review_due: '2026-11-13',
-    notes: 'Re-review on the one-year commencement phase and immediately after any Board, Significant Data Fiduciary, transfer-restriction, exemption, or localisation notification.'
+    notes: 'Re-review on the one-year commencement phase and immediately after any Board, Significant Data Fiduciary, transfer-restriction, exemption, or localisation notification. S.O. 5458(E) is carried from professional sources only; the official e-Gazette copy has not been obtained.'
   },
 
   'risk-library.js': {

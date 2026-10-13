@@ -1,0 +1,60 @@
+<%- include('partials/auditor_header', { title: 'AI systems', token, share, workspace, active: 'aims-systems' }) %>
+
+<div class="a-page-head">
+  <h1 class="a-page-title">AI system register</h1>
+  <div class="a-page-sub">Every AI system the organisation provides, develops or uses, its role for each, and the approved impact assessment behind it (ISO/IEC 42001 clause 6.1.4 and Annex A.5).</div>
+</div>
+
+<% const inScope = systems.filter(s => s.in_scope); %>
+<div class="kpi-row">
+  <div class="kpi brand"><div class="kpi-label">Systems in scope</div><div class="kpi-num"><%= inScope.length %></div><div class="kpi-meta"><%= systems.length - inScope.length %> recorded outside scope</div></div>
+  <div class="kpi <%= inScope.some(s => s.assessment.state === 'none') ? 'bad' : 'good' %>"><div class="kpi-label">Without an approved assessment</div><div class="kpi-num"><%= inScope.filter(s => s.assessment.state === 'none').length %></div><div class="kpi-meta">in scope</div></div>
+  <div class="kpi <%= inScope.some(s => s.assessment.state === 'due') ? 'warn' : 'good' %>"><div class="kpi-label">Reassessment due</div><div class="kpi-num"><%= inScope.filter(s => s.assessment.state === 'due').length %></div><div class="kpi-meta">after a change or past the review date</div></div>
+</div>
+
+<% if (!systems.length) { %>
+  <div class="empty-pane"><div class="empty-pane-title">No AI systems recorded</div><div>The register is empty.</div></div>
+<% } else { %>
+  <div class="panel" style="margin-bottom:22px;">
+    <div class="panel-head"><h2>Register · <%= systems.length %> system<%= systems.length === 1 ? '' : 's' %></h2></div>
+    <table class="t">
+      <thead><tr><th>System</th><th style="width:22%;">Organisation's role</th><th style="width:12%;">Lifecycle</th><th style="width:16%;">Owner</th><th style="width:24%;">Impact assessment</th></tr></thead>
+      <tbody>
+        <% systems.forEach(s => { %>
+          <tr>
+            <td><strong><%= s.name %></strong><% if (!s.in_scope) { %> <span class="chip chip-neutral">outside scope</span><% } %><% if (s.purpose) { %><div class="meta"><%= s.purpose %></div><% } %></td>
+            <td class="meta"><%= s.rolesText || '-' %></td>
+            <td class="meta"><%= s.lifecycleText || '-' %></td>
+            <td class="meta"><%= s.system_owner || '-' %></td>
+            <td><span class="chip chip-<%= s.assessment.state === 'current' ? 'good' : s.assessment.state === 'due' ? 'warn' : 'bad' %>"><%= s.assessment.state === 'current' ? 'Current' : s.assessment.state === 'due' ? 'Reassessment due' : 'None approved' %></span><div class="meta"><%= s.assessment.reason %></div></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+<% } %>
+
+<% if (!assessments.length) { %>
+  <div class="empty-pane"><div class="empty-pane-title">Approved impact assessments</div><div>No impact assessment has been approved yet.</div></div>
+<% } else { %>
+  <div class="panel">
+    <div class="panel-head"><h2>Approved impact assessments</h2><span class="meta">drafts are not shown</span></div>
+    <table class="t">
+      <thead><tr><th>System</th><th style="width:9%;">Version</th><th style="width:16%;">Approved</th><th style="width:12%;">Residual impact</th><th style="width:20%;">Decision</th><th style="width:12%;">Next review</th></tr></thead>
+      <tbody>
+        <% assessments.forEach(a => { %>
+          <tr>
+            <td><a href="/auditor/<%= token %>/aims/systems/<%= a.ai_system_id %>/impact-assessments/<%= a.id %>"><%= a.system_name %></a><% if (a.status === 'superseded') { %> <span class="chip chip-neutral">superseded</span><% } %></td>
+            <td class="meta">v<%= a.version_no %></td>
+            <td class="meta"><%= fmtDate(a.approved_at) %><% if (a.approved_by_name) { %><br><%= a.approved_by_name %><% } %></td>
+            <td class="meta"><%= a.residualText || '-' %></td>
+            <td class="meta"><%= a.decisionText || '-' %></td>
+            <td class="meta"><%= fmtDate(a.next_review_date) %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+<% } %>
+
+<%- include('partials/auditor_footer') %>

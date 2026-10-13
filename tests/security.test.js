@@ -37,12 +37,14 @@ test('Public trust path explains evaluation, access, security, privacy, and disc
   conn.close();
 
   const expected = new Map([
-    ['/', /Request an evaluation/],
+    // The home page's call to action reads "Talk to us"; what matters is that
+    // it leads to the evaluation route before sign-in.
+    ['/', /href="\/contact"[^>]*>Talk to us/],
     ['/register', /Access starts with an invitation/],
     ['/security', /Security boundaries should be testable/],
     ['/privacy', /Privacy responsibilities are shared/],
     ['/terms', /does not itself certify conformity/],
-    ['/contact', /Start with the workflow you need to test/],
+    ['/contact', /Tell us about your compliance programme/],
   ]);
   for (const [url, marker] of expected) {
     const response = await client.get(url);
@@ -195,11 +197,16 @@ test('XSS - an attribute-breakout payload in a client name cannot escape its ele
   assert.ok(dash.text.includes('&quot;') || dash.text.includes('&#34;') || dash.text.includes('&#x22;'), 'the breakout quote must be HTML-escaped');
 });
 
-test('Workspace creation preserves an intentionally empty programme selection', async (t) => {
+test('Workspace creation requires a programme; a client from before still shows its decision as pending', async (t) => {
   const { client, dbPath } = await bootClient();
   t.after(() => client.close());
-  const created = await client.post('/workspaces', { client_name:'Programme Pending Client', industry:'Technology', scope:'Programme selection remains under client discussion.', engagement_outcome:'certification_support' });
-  assert.equal(created.status,302);
+  const refused = await client.post('/workspaces', { client_name:'Programme Pending Client', industry:'Technology' });
+  assert.equal(refused.status,400);
+  assert.match(refused.text,/Choose at least one programme for this client/);
+  const seed = new Database(dbPath);
+  const lead = seed.prepare(`SELECT id,firm_id FROM users WHERE email='sec-test@example.com'`).get();
+  seed.prepare(`INSERT INTO workspaces (firm_id,client_name,industry,scope,lead_consultant_id,frameworks) VALUES (?,'Programme Pending Client','Technology','Programme selection remains under client discussion.',?,'[]')`).run(lead.firm_id,lead.id);
+  seed.close();
   const conn = new Database(dbPath);
   const workspace = conn.prepare(`SELECT id,frameworks FROM workspaces WHERE client_name='Programme Pending Client'`).get();
   assert.equal(workspace.frameworks,'[]');

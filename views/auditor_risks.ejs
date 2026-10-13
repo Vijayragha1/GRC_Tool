@@ -1,4 +1,6 @@
-<%- include('partials/auditor_header', { title: 'Risk register', token, share, workspace, active: 'risks' }) %>
+<% const aiRegister = typeof system !== 'undefined' && system === 'iso42001';
+   const pageTitle = aiRegister ? 'AI risk register' : 'Risk register'; %>
+<%- include('partials/auditor_header', { title: pageTitle, token, share, workspace, active: 'risks' }) %>
 
 <%
   const lScale = methodology.likelihood_scale;
@@ -9,10 +11,15 @@
 %>
 
 <div class="a-page-head">
-  <h1 class="a-page-title">Risk register</h1>
+  <h1 class="a-page-title"><%= pageTitle %><%= typeof both !== 'undefined' && both ? (aiRegister ? ' · ISO/IEC 42001' : ' · ISO/IEC 27001') : '' %></h1>
   <div class="a-page-sub">
     Methodology: <strong><%= methodology.name %></strong> · <%= lScale.length %>×<%= iScale.length %> matrix. The heatmap shows inherent risk count per cell; the table lists every risk in descending score order.
+    <% if (aiRegister) { %>Each AI risk is rated for its impact on the organisation, on individuals or groups and on society, and scored on the highest.
+      <%= lastAssessment ? `Last risk assessment performed ${lastAssessment.performed_on} and sealed as a record.` : 'No AI risk assessment has been recorded yet.' %><% } %>
   </div>
+  <% if (typeof both !== 'undefined' && both) { %>
+    <div class="a-page-sub"><a href="/auditor/<%= token %>/risks?system=<%= aiRegister ? 'iso27001' : 'iso42001' %>"><%= aiRegister ? 'ISO 27001 risk register' : 'ISO 42001 AI risk register' %></a></div>
+  <% } %>
 </div>
 
 <% if (risks.length === 0) { %>
@@ -56,12 +63,12 @@
 
   <%# risk register table %>
   <div class="panel">
-    <div class="panel-head"><h2>Risk register · all <%= risks.length %> risks</h2></div>
+    <div class="panel-head"><h2><%= pageTitle %> · all <%= risks.length %> risks</h2></div>
     <table class="t">
       <thead><tr>
         <th style="width:64px;">ID</th>
         <th>Title</th>
-        <th style="width:140px;">Asset</th>
+        <% if (aiRegister) { %><th style="width:150px;">Impact: org · people · society</th><% } else { %><th style="width:140px;">Asset</th><% } %>
         <th class="num" style="width:60px;">L · I</th>
         <th style="width:96px;">Band</th>
         <th style="width:110px;">Treatment</th>
@@ -80,9 +87,10 @@
             <td class="mono meta">R-<%= String(r.id).padStart(3,'0') %></td>
             <td>
               <%= r.title %>
+              <% if (r.ai_system_name) { %><div class="meta text-sm" style="margin-top:3px;">AI system: <%= r.ai_system_name %></div><% } %>
               <% if (r.description) { %><div class="meta text-sm" style="margin-top:3px;"><%= r.description.slice(0,140) %><%= r.description.length > 140 ? '…' : '' %></div><% } %>
             </td>
-            <td class="meta"><%= r.asset_name || '-' %></td>
+            <% if (aiRegister) { %><td class="meta"><%= r.impact_organisation ?? r.impact ?? '-' %> · <%= r.impact_individuals ?? '-' %> · <%= r.impact_society ?? '-' %></td><% } else { %><td class="meta"><%= r.asset_name || '-' %></td><% } %>
             <td class="num meta"><%= r.likelihood %>·<%= r.impact %></td>
             <td>
               <% if (r.band) { %><span class="chip" style="background:<%= bandColor %>1a;color:<%= bandColor %>;text-transform:uppercase;"><%= r.band %></span><% } else { %>-<% } %>

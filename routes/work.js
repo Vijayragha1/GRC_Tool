@@ -4,6 +4,7 @@ const rbac=require('../lib/rbac');
 const {listWork,authorizedWorkspaces,workspacePermissions}=require('../lib/work-projection');
 const {PROGRAMMES,programmeCards}=require('../lib/programme-experience');
 const {experienceFor}=require('../lib/experience-flags');
+const {engagementHealth,relativeDue,shortDate,weekday}=require('../lib/work-overview');
 
 function register(app,{db,requireAuth}){
   function page(view){return(req,res)=>{
@@ -26,7 +27,7 @@ function register(app,{db,requireAuth}){
       filters.from=/^\d{4}-\d{2}-\d{2}$/.test(filters.from)?filters.from:'';
       filters.to=/^\d{4}-\d{2}-\d{2}$/.test(filters.to)?filters.to:'';
     }
-    const result=listWork({db,workspaces,actor,scope,filters,cursor:req.query.cursor,limit:50});
+    const result=listWork({db,workspaces,actor,scope,filters,cursor:req.query.cursor,limit:50,digest:view==='overview'});
     const base=ws?`/workspaces/${ws.id}/work`:'/work';
     const query=(changes={},path=req.path)=>{
       const params=new URLSearchParams();
@@ -43,6 +44,7 @@ function register(app,{db,requireAuth}){
     const detailHref=href=>{const url=new URL(href,'http://work.local');url.searchParams.set('return_to',query());return url.pathname+url.search+url.hash;};
     const locals={user:actor,ws,active:'work',view,result,filters,workScope:scope,crossView,isManager,base,query,detailHref,workspaces,PROGRAMMES,
       programmes:ws&&actor.user_type==='firm'?programmeCards(ws):[],rollout,
+      health:view==='overview'&&isManager?engagementHealth(db,workspaces,actor,result.today,result.counts.byWorkspace):null,relativeDue,shortDate,weekday,
       title:view==='overview'?(isManager?'Delivery overview':'My overview'):view==='calendar'?'Calendar':view==='workload'?'Team workload':view==='reports'?'Reports':scope==='mine'?'My work':'Work queue'};
     return res.render(view==='overview'?'experience_overview':'work_queue',locals);
   };}

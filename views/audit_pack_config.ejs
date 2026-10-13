@@ -52,10 +52,12 @@
         </div>
         <div>
           <%
+            const std = typeof standards !== 'undefined' ? standards : { isms: true, aims: false };
             const sectionDefs = [
               { key: 'cover',         title: 'Cover page',             sub: 'Firm brand, client name, date, SoA snapshot reference',                     icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' },
               { key: 'summary',       title: 'Executive summary',      sub: 'KPI tiles: applicable controls, open risks, NCs, evidence count, MRMs',     icon: 'M3 3v18h18 M7 14l4-4 4 4 5-5' },
-              { key: 'soa',           title: 'Statement of Applicability', sub: 'Full SoA table from a frozen snapshot (or live state if no snapshot)', icon: 'M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11' },
+              { key: 'soa',           title: 'Statement of Applicability', sub: std.isms && std.aims ? 'Both SoAs, each from a frozen snapshot (or live state if none)' : 'Full SoA table from a frozen snapshot (or live state if no snapshot)', icon: 'M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11' },
+              ...(std.aims ? [{ key: 'ai_systems', title: 'AI system register', sub: 'Every AI system with its role and lifecycle stage, and the approved impact assessments', icon: 'M4 4h16v16H4z M9 9h6v6H9z' }] : []),
               { key: 'risks',         title: 'Risk register + heatmap', sub: 'Every risk with L·I, treatment, owner; inherent-risk heatmap',              icon: 'M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z M12 9v4 M12 17h.01' },
               { key: 'evidence',      title: 'Evidence index',         sub: 'Filename, linked control, SHA-256, size, uploader, date',                  icon: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3' },
               { key: 'audits',        title: 'Internal audit programme', sub: 'Audits + findings table per audit',                                       icon: 'M11 17a6 6 0 1 0 0-12 6 6 0 0 0 0 12z M21 21l-4.35-4.35' },
@@ -83,9 +85,35 @@
         </div>
       </div>
 
+      <% if (std.aims) { %>
       <div class="panel" style="margin-bottom:14px;">
         <div class="panel-head">
-          <h2>Statement of Applicability snapshot</h2>
+          <h2>ISO 42001 SoA snapshot</h2>
+          <span class="meta text-xs">Pick the version to bundle</span>
+        </div>
+        <div class="panel-pad">
+          <% if (!aiSnapshots.length) { %>
+            <div class="meta text-md" style="line-height:1.55;">
+              No ISO 42001 SoA snapshots exist yet. The pack will include the <strong>live SoA state</strong> with a note explaining it isn't frozen.
+              <a href="/workspaces/<%= ws.id %>/iso42001/soa" class="link" style="margin-left:6px;">Open the SoA →</a>
+            </div>
+          <% } else { const approvedSnap = aiSnapshots.find(s => s.approval_status === 'approved'); %>
+            <label class="label">Snapshot</label>
+            <select class="select" name="aiSnapshotId">
+              <option value=""><%= approvedSnap ? `Latest approved (${approvedSnap.label || approvedSnap.created_at.slice(0,10)})` : `Most recent, not approved (${aiSnapshots[0].label || aiSnapshots[0].created_at.slice(0,10)})` %></option>
+              <% aiSnapshots.forEach(s => { %>
+                <option value="<%= s.id %>"><%= s.label || '(unlabelled)' %><%= s.version ? ` v${s.version}` : '' %> · <%= s.created_at.slice(0,10) %><%= s.approval_status === 'approved' ? ' · approved' : '' %></option>
+              <% }) %>
+            </select>
+          <% } %>
+        </div>
+      </div>
+      <% } %>
+
+      <% if (std.isms) { %>
+      <div class="panel" style="margin-bottom:14px;">
+        <div class="panel-head">
+          <h2><%= std.aims ? 'ISO 27001 SoA snapshot' : 'Statement of Applicability snapshot' %></h2>
           <span class="meta text-xs">Pick the version to bundle</span>
         </div>
         <div class="panel-pad">
@@ -105,6 +133,7 @@
           <% } %>
         </div>
       </div>
+      <% } %>
 
       <div class="panel">
         <div class="panel-head">
@@ -165,7 +194,8 @@
             <div class="meta text-sm" style="line-height:1.7;" id="contentList">
               <div data-key="cover">✓ Cover page</div>
               <div data-key="summary">✓ Executive summary</div>
-              <div data-key="soa">✓ SoA · <%= snapshots.length %> snapshot<%= snapshots.length === 1 ? '' : 's' %></div>
+              <div data-key="soa">✓ SoA<% if (std.isms) { %> · <%= snapshots.length %> snapshot<%= snapshots.length === 1 ? '' : 's' %><% } %><% if (std.aims) { %> · ISO 42001 <%= aiSnapshots.length %> snapshot<%= aiSnapshots.length === 1 ? '' : 's' %><% } %></div>
+              <% if (std.aims) { %><div data-key="ai_systems">✓ AI system register · <%= aiSystemCount %> system<%= aiSystemCount === 1 ? '' : 's' %></div><% } %>
               <div data-key="risks">✓ Risk register · <%= riskCount %> risk<%= riskCount === 1 ? '' : 's' %></div>
               <div data-key="evidence">✓ Evidence index · <%= evidenceCount %> file<%= evidenceCount === 1 ? '' : 's' %></div>
               <div data-key="audits">✓ Internal audit · <%= auditCount %></div>
